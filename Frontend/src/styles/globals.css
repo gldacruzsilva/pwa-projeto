@@ -1,0 +1,25 @@
+/* Estilo para spinners de input number em modo escuro */
+.dark input[type='number']::-webkit-outer-spin-button,
+.dark input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #000 !important;
+  color: #fff;
+  margin: 0;
+}
+
+.dark input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* Input number padrão */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+}
