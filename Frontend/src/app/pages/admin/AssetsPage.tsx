@@ -68,8 +68,9 @@ export default function AssetsPage() {
       if (response.ok) {
         const dados = await response.json();
         const ativosFormatados = dados.map((item: any) => ({
-          id: item.codi, 
-          code: item.codi.toString(), 
+          // CORREÇÃO: Usando 'coda' que é o nome da coluna no seu backend, em vez de 'codi'
+          id: item.coda, 
+          code: item.coda.toString(), 
           name: item.nome,
           quantity: Number(item.qtde), 
           value: Number(item.valor),
@@ -132,11 +133,8 @@ export default function AssetsPage() {
         setTimeout(() => window.location.reload(), 1500);
       } else {
         const errorData = await response.json().catch(() => ({}));
-        if (errorData.detalhe) {
-          toast.error(`Erro MySQL: ${errorData.detalhe}`);
-        } else {
-          toast.error(errorData.mensagem || 'Falha ao atualizar movimentação.');
-        }
+        if (errorData.detalhe) toast.error(`Erro MySQL: ${errorData.detalhe}`);
+        else toast.error(errorData.mensagem || 'Falha ao atualizar movimentação.');
       }
     } catch (erro) {
       toast.error('Erro de conexão ao registrar movimentação.');
@@ -145,7 +143,8 @@ export default function AssetsPage() {
 
   const handleSaveNovoAtivo = async () => {
     if (!isAdmin) return toast.error('Acesso negado.');
-    if (!formData.code.trim() || !formData.name.trim() || !formData.quantity.trim() || !formData.value.trim()) {
+    // CORREÇÃO: Removida a validação do formData.code
+    if (!formData.name.trim() || !formData.quantity.trim() || !formData.value.trim()) {
       toast.error('Preencha todos os campos obrigatórios');
       return;
     }
@@ -155,7 +154,8 @@ export default function AssetsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          codi: parseInt(formData.code), 
+          // CORREÇÃO: O banco com Auto-Increment vai gerar o 'coda'. 
+          // Retirado o envio do formData.code.
           nome: formData.name,
           qtde: parseInt(formData.quantity), 
           valor: parseFloat(formData.value),
@@ -170,11 +170,8 @@ export default function AssetsPage() {
         setTimeout(() => window.location.reload(), 1500);
       } else {
         const errorData = await response.json().catch(() => ({}));
-        if (errorData.detalhe) {
-          toast.error(`Erro MySQL: ${errorData.detalhe}`);
-        } else {
-          toast.error(errorData.mensagem || 'Falha ao cadastrar ativo no banco.');
-        }
+        if (errorData.detalhe) toast.error(`Erro MySQL: ${errorData.detalhe}`);
+        else toast.error(errorData.mensagem || 'Falha ao cadastrar ativo no banco.');
       }
     } catch (erro) {
       toast.error('Erro de rede ao tentar cadastrar ativo.');
@@ -203,11 +200,8 @@ export default function AssetsPage() {
         setTimeout(() => window.location.reload(), 1500);
       } else {
         const errorData = await response.json().catch(() => ({}));
-        if (errorData.detalhe) {
-          toast.error(`Erro MySQL: ${errorData.detalhe}`);
-        } else {
-          toast.error(errorData.mensagem || 'Falha ao atualizar ativo.');
-        }
+        if (errorData.detalhe) toast.error(`Erro MySQL: ${errorData.detalhe}`);
+        else toast.error(errorData.mensagem || 'Falha ao atualizar ativo.');
       }
     } catch (erro) {
       toast.error('Erro de rede ao atualizar ativo.');
@@ -384,7 +378,7 @@ export default function AssetsPage() {
         <DialogTitle>Cadastrar Ativo</DialogTitle>
         <DialogContent dividers>
           <Box display="flex" flexDirection="column" gap={3} mt={1}>
-            <TextField fullWidth label="Código do Ativo" type="number" value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} required />
+            {/* CORREÇÃO: Removido o campo "Código do Ativo" */}
             <TextField fullWidth label="Nome do Ativo" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
             <TextField fullWidth label="Quantidade Inicial" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} required />
             <TextField fullWidth label="Preço Unitário (R$)" type="number" inputProps={{ step: '0.01' }} value={formData.value} onChange={(e) => setFormData({ ...formData, value: e.target.value })} required />

@@ -17,9 +17,10 @@ interface OrderDetailDialogProps {
 interface ProdutoBanco {
   codp: number;
   nome: string;
-  preco?: number;
+  preco_custo?: number;
   preco_venda?: number;
   qtde_estoque: number;
+  lote?: string;
 }
 
 interface ItemComanda {
@@ -46,7 +47,7 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
   const [addMode, setAddMode] = useState<'barcode' | 'search' | 'popular'>('barcode');
   const [barcode, setBarcode] = useState('');
   const [quantity, setQuantity] = useState('1');
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProdutoBanco | null>(null);
   const [openPayment, setOpenPayment] = useState(false);
   
   const [ativoToDelete, setItemToDelete] = useState<{ codp: number, nome: string } | null>(null);
@@ -61,7 +62,13 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
       ]);
 
       if (resOrder.ok) setOrder(await resOrder.json());
-      if (resProducts.ok) setProducts(await resProducts.json());
+
+      if (resProducts.ok) {
+        const data = await resProducts.json();
+        // Garante que é um array, mesmo se a API envelopar em "produtos" ou "data"
+        setProducts(Array.isArray(data) ? data : data.produtos || data.data || []);
+      }
+
     } catch (error) {
       toast.error('Erro ao carregar os dados da comanda.');
     }
@@ -164,16 +171,17 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
   };
 
   const handleSearchAdd = () => {
-    if (!selectedProduct) return toast.error('Selecione um produto');
-    const product = products.find(p => p.codp.toString() === selectedProduct);
-    const qty = parseInt(quantity);
-    
-    if (product && qty > 0) {
-      handleAddItem(product.codp, qty, product.nome);
-      setSelectedProduct(null);
-      setQuantity('1');
-    }
-  };
+  if (!selectedProduct) return toast.error('Selecione um produto');
+  
+  const qty = parseInt(quantity);
+  
+  if (qty > 0) {
+    // 🟢 Agora usamos as propriedades direto do objeto armazenado no estado
+    handleAddItem(selectedProduct.codp, qty, selectedProduct.nome);
+    setSelectedProduct(null);
+    setQuantity('1');
+  }
+};
 
   const total = Number(order.valor_total) || 0;
   const totalPaid = Number((order as any).totalPaid) || 0; 
@@ -243,21 +251,25 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
                   </form>
                 )}
 
-                {addMode === 'search' && (
-                  <Box display="flex" gap={1}>
-                    <Autocomplete
-                      fullWidth
-                      size="small"
-                      options={products}
-                      getOptionLabel={(option) => `${option.nome} - R$ ${Number(option.preco || option.preco_venda || 0).toFixed(2)} (Estoque: ${option.qtde_estoque})`}
-                      // 🟢 ADICIONADO variant="outlined" ABAIXO
-                     renderInput={(params: any) => <TextField {...params} label="Buscar pelo nome..." variant="outlined" />}
-                      value={products.find(p => p.codp.toString() === selectedProduct) || null}
-                      onChange={(_, newValue) => setSelectedProduct(newValue?.codp.toString() || null)}
-                    />
-                    <Button variant="contained" disableElevation onClick={handleSearchAdd}>Inserir</Button>
-                  </Box>
-                )}
+          {addMode === 'search' && (
+            <Box display="flex" gap={1}>
+              <Autocomplete
+                fullWidth
+                size="small"
+                options={products}
+                // 🟢 Compara Código E Lote para evitar conflitos de "chaves duplicadas"
+                isOptionEqualToValue={(option, value) => option.codp === value.codp && option.lote === value.lote}
+                getOptionLabel={(option) => 
+                  `${option.nome ?? 'Sem nome'} - R$ ${Number(option.preco_venda || 0).toFixed(2)} (Estoque: ${option.qtde_estoque ?? 0})`
+                }
+                renderInput={(params) => <TextField {...params} label="Buscar pelo nome..." variant="outlined" />}
+                // 🟢 Fica muito mais limpo recebendo e enviando o objeto inteiro
+                value={selectedProduct}
+                onChange={(_, newValue) => setSelectedProduct(newValue)}
+              />
+              <Button variant="contained" disableElevation onClick={handleSearchAdd}>Inserir</Button>
+            </Box>
+          )}
 
                 {addMode === 'popular' && (
                   <Grid container spacing={1}>
@@ -280,7 +292,7 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
                             </Typography>
                             <Box display="flex" flexDirection="column" gap={0.5} alignItems="center">
                               <Chip 
-                                label={`R$ ${Number(product.preco || product.preco_venda || 0).toFixed(2)}`} 
+                                label={`R$ ${Number(product.preco_venda || 0).toFixed(2)}`} 
                                 size="small" 
                                 color="primary" 
                                 variant="outlined" 

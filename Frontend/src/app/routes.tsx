@@ -10,6 +10,10 @@ import AuditHistoryPage from "./pages/admin/AuditHistoryPage";
 import SalesPage from "./pages/employee/SalesPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
+// 🟢 1. Importe a tela exclusiva do funcionário que criamos!
+// Ajuste o caminho './app/components/employee/StockReceiptTab' de acordo com a pasta correta do seu projeto
+import StockReceiptTab from "./components/employee/StockReceiptTab"; 
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -20,21 +24,21 @@ export const router = createBrowserRouter([
     Component: AdminLayout,
     children: [
       { index: true, Component: InventoryPage },
-      { path: "inventory", Component: InventoryPage },
-      { path: "stock-receipt", Component: StockReceiptPage },
-      { path: "assets", Component: AssetsPage },
-      { path: "reports", Component: ReportsPage },
-      { path: "audit", Component: AuditHistoryPage },
+      { path: "estoque", Component: InventoryPage },
+      { path: "movimentacao", Component: StockReceiptPage }, // Admin usa a Page
+      { path: "ativos", Component: AssetsPage },
+      { path: "relatorios", Component: ReportsPage },
+      { path: "auditoria", Component: AuditHistoryPage },
     ],
   },
   {
-    path: "/employee",
+    path: "/funcionario",
     Component: EmployeeLayout,
     children: [
       { index: true, Component: SalesPage },
-      { path: "sales", Component: SalesPage },
-      // 🟢 Adicionamos a rota de estoque para o funcionário aqui:
-      { path: "stock-receipt", Component: StockReceiptPage },
+      { path: "comandas", Component: SalesPage },
+      // 🟢 2. Agora sim, o funcionário chama a aba blindada dele (Tab)
+      { path: "estoque", Component: StockReceiptTab }, 
     ],
   },
   {

@@ -31,11 +31,11 @@ import { ThemeContext } from '../App';
 const drawerWidth = 240;
 
 const menuItems = [
-  { text: 'Estoque', icon: <Inventory />, path: '/admin/inventory' },
-  { text: 'Movimentação', icon: <LocalShipping />, path: '/admin/stock-receipt' },
-  { text: 'Ativos', icon: <Category />, path: '/admin/assets' },
-  { text: 'Relatórios', icon: <Assessment />, path: '/admin/reports' },
-  { text: 'Auditoria', icon: <History />, path: '/admin/audit' },
+  { text: 'Estoque', icon: <Inventory />, path: '/admin/estoque' },
+  { text: 'Movimentação', icon: <LocalShipping />, path: '/admin/movimentacao' },
+  { text: 'Ativos', icon: <Category />, path: '/admin/ativos' },
+  { text: 'Relatórios', icon: <Assessment />, path: '/admin/relatorios' },
+  { text: 'Auditoria', icon: <History />, path: '/admin/auditoria' },
 ];
 
 export default function AdminLayout() {

@@ -3,7 +3,7 @@ import {
   Box, TextField, Button, Paper, Typography, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, IconButton, Alert, Autocomplete, 
   Dialog, DialogTitle, DialogContent, DialogActions, MenuItem,
-  Card, CardContent, Divider, useMediaQuery, useTheme 
+  Card, CardContent, useMediaQuery, useTheme 
 } from '@mui/material';
 import { Add, Delete, AddCircleOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
@@ -17,7 +17,6 @@ export default function StockReceiptPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [novoProduto, setNovoProduto] = useState({ codp: '', nome: '', preco: '', preco_custo: '', lote: '1' });
 
-  // 🟢 Hooks para responsividade
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -28,10 +27,10 @@ export default function StockReceiptPage() {
 
   const buscarProdutos = async () => {
     try {
-      const resposta = await fetch('/api/produtos');
+      const resposta = await fetch('http://localhost:3000/produtos');
       if (resposta.ok) {
         const dados = await resposta.json();
-        setProductList(dados);
+        setProductList(Array.isArray(dados) ? dados : dados.produtos || []);
       }
     } catch (erro) { toast.error('Erro de conexão.'); }
   };
@@ -41,7 +40,7 @@ export default function StockReceiptPage() {
   const handleCadastrarNovoProduto = async () => {
     if (!novoProduto.codp.trim() || !novoProduto.nome.trim()) return toast.error('Preencha os campos!');
     try {
-      const resposta = await fetch('/api/produtos', {
+      const resposta = await fetch('http://localhost:3000/produtos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -67,14 +66,13 @@ export default function StockReceiptPage() {
     } else {
       setReceiptItems([...receiptItems, {
         productCode: product.codp.toString(), productName: product.nome, preco_venda: Number(product.preco_venda || 0),
-        quantity: qty, currentStock: product.qtde_estoque, tipoMovimento: tipo,
+        quantity: Math.max(0, qty), currentStock: product.qtde_estoque, tipoMovimento: tipo,
         costPrice: Number(product.preco_custo || 0), batch: product.lote || '1',
         originalCostPrice: Number(product.preco_custo || 0), originalBatch: product.lote || '1',
       }]);
     }
   };
 
-  // 🟢 Função adicionada para remover item caso inserido por engano
   const removerDaTabela = (index: number) => {
     const novaLista = [...receiptItems];
     novaLista.splice(index, 1);
@@ -123,7 +121,7 @@ export default function StockReceiptPage() {
         const textoDescricao = `${prefixo}: ${description.trim() || 'Movimentação de estoque'}`;
         
         if (criarNovoLote) {
-          return fetch('/api/produtos', {
+          return fetch('http://localhost:3000/produtos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -135,7 +133,7 @@ export default function StockReceiptPage() {
           });
         } else {
           const novoEstoque = item.currentStock + (item.tipoMovimento === 'entrada' ? item.quantity : -item.quantity);
-          return fetch(`/api/produtos/${item.productCode}`, {
+          return fetch(`http://localhost:3000/produtos/${item.productCode}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -170,7 +168,6 @@ export default function StockReceiptPage() {
 
         <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', fontWeight: 'bold' }}> Adicionar por Código </Typography>
         <form onSubmit={handleBarcodeSubmit}>
-          {/* 🟢 FlexDirection ajustado para empilhar no mobile */}
           <Box display="flex" gap={2} mb={4} flexDirection={{ xs: 'column', sm: 'row' }}>
             <TextField fullWidth label="Código do Produto" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
             <Button type="submit" variant="contained" startIcon={<Add />} sx={{ height: 56, minWidth: { sm: 160 }, flexShrink: 0 }} fullWidth={isMobile}> 
@@ -180,11 +177,11 @@ export default function StockReceiptPage() {
         </form>
 
         <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', fontWeight: 'bold' }}> Adicionar por Pesquisa </Typography>
-        {/* 🟢 FlexDirection ajustado para empilhar no mobile */}
         <Box display="flex" gap={2} mb={2} flexDirection={{ xs: 'column', sm: 'row' }}>
           <Autocomplete
             fullWidth options={productList}
             getOptionLabel={(o) => `${o.nome} (Lote: ${o.lote || '1'} | Est: ${o.qtde_estoque})`}
+            isOptionEqualToValue={(option, value) => option.codp === value.codp && option.lote === value.lote}
             renderInput={(params) => <TextField {...params} label="Buscar Produto pelo Nome ou Lote" variant="outlined" />}
             value={productList.find(p => p.codp.toString() === selectedProduct?.split('|')[0] && p.lote === selectedProduct?.split('|')[1]) || null}
             onChange={(_, nv) => setSelectedProduct(nv ? `${nv.codp}|${nv.lote}` : null)}
@@ -198,7 +195,6 @@ export default function StockReceiptPage() {
       {receiptItems.length > 0 && (
         <Paper sx={{ p: { xs: 2, sm: 4 } }}>
           
-          {/* 🟢 RENDERIZAÇÃO CONDICIONAL: CARDS NO CELULAR, TABELA NO PC */}
           {isMobile ? (
             <Box display="flex" flexDirection="column" gap={2} mb={4}>
               {receiptItems.map((item, index) => (
@@ -240,11 +236,12 @@ export default function StockReceiptPage() {
                       </Box>
 
                       <Box display="flex" gap={2} alignItems="center">
+                        {/* 🟢 Bloqueio de valor negativo adicionado aqui */}
                         <TextField 
                           fullWidth label="Quantidade" type="number" value={item.quantity} size="small"
-                          onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Number(e.target.value)} : i))}
+                          onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, Number(e.target.value))} : i))}
                         />
-                        <Box fullWidth sx={{ textAlign: 'center', width: '100%' }}>
+                        <Box sx={{ textAlign: 'center', width: '100%' }}>
                           <Typography variant="caption" color="text.secondary" display="block">Estoque Final</Typography>
                           <Typography variant="body1" fontWeight="bold" color={item.tipoMovimento === 'entrada' ? 'success.main' : 'error.main'}>
                             {item.currentStock + (item.tipoMovimento === 'entrada' ? item.quantity : -item.quantity)}
@@ -278,7 +275,10 @@ export default function StockReceiptPage() {
                       <TableCell><TextField value={item.batch} onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, batch: e.target.value} : i))} size="small" disabled={item.tipoMovimento === 'saida'} /></TableCell>
                       <TableCell><TextField type="number" value={item.costPrice} onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, costPrice: Number(e.target.value)} : i))} size="small" disabled={item.tipoMovimento === 'saida'} /></TableCell>
                       <TableCell><TextField type="number" value={item.preco_venda} onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, preco_venda: Number(e.target.value)} : i))} size="small" /></TableCell>
-                      <TableCell><TextField type="number" value={item.quantity} onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Number(e.target.value)} : i))} size="small" /></TableCell>
+                      <TableCell>
+                        {/* 🟢 Bloqueio de valor negativo adicionado aqui */}
+                        <TextField type="number" value={item.quantity} onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, Number(e.target.value))} : i))} size="small" />
+                      </TableCell>
                       <TableCell className="font-bold">{item.currentStock + (item.tipoMovimento === 'entrada' ? item.quantity : -item.quantity)}</TableCell>
                       <TableCell align="center">
                         <IconButton size="small" color="error" onClick={() => removerDaTabela(index)}>
@@ -301,7 +301,6 @@ export default function StockReceiptPage() {
         </Paper>
       )}
 
-      {/* 🟢 MODAL COM FULLSCREEN NO CELULAR */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Cadastrar Novo Produto</DialogTitle>
         <DialogContent dividers>

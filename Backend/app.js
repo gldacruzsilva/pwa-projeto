@@ -31,7 +31,15 @@ app.get('/relatorios/produtos', async (req, res) => {
         res.status(500).json({ erro: 'Erro interno' });
     }
 });
-
+app.get('/produtos', async (req, res) => { // 🟢 Removido o /api
+    try {
+        const [linhas] = await db.execute('SELECT codp, nome, preco_venda, preco_custo, qtde_estoque, lote FROM Produto');
+        res.json(linhas);
+    } catch (erro) {
+        console.error('Erro ao buscar produtos:', erro);
+        res.status(500).json({ mensagem: 'Erro interno ao buscar produtos.' });
+    }
+});
 app.get('/relatorios/vendas', async (req, res) => {
     try {
         const [linhas] = await db.execute("SELECT codc, nick, valor_total, data_venda, status FROM Comanda ORDER BY data_venda DESC");
@@ -105,11 +113,11 @@ app.get('/auditoria/ativos', async (req, res) => {
     try {
         const sql = `
             SELECT 
-                si.codsi AS codse, si.qtde, si.data_hora AS data, si.descricao,
-                i.a AS codp, i.nome AS produto_nome,
+                si.codsi, si.qtde, si.data_hora AS data, si.descricao,
+                a.coda, a.nome AS produto_nome,
                 u.codu, u.nome AS usuario_nome, u.tipo AS usuario_tipo
             FROM SaldoItem si
-            LEFT JOIN Ativo i ON si.coda = i.coda
+            LEFT JOIN Ativo a ON si.coda = a.coda
             LEFT JOIN Usuario u ON si.codu = u.codu
             ORDER BY si.data_hora DESC, si.codsi DESC
         `;
@@ -179,17 +187,25 @@ app.post('/produtos', async (req, res) => {
 app.put('/produtos/:id', async (req, res) => {
     try {
         const { id } = req.params; 
-        const { nome, preco_venda, qtde_estoque, preco_custo, lote, lote_original, descricao = 'Movimentação', codu = 1 } = req.body; 
+        
+        // 🟢 Capturamos o lote_original que o front-end agora vai enviar
+        const { nome, preco, preco_venda, qtde_estoque, preco_custo, lote, lote_original, descricao = 'Movimentação', codu = 1 } = req.body; 
 
-        const [produtoAtual] = await db.execute('SELECT nome, preco_venda, qtde_estoque, preco_custo, lote FROM Produto WHERE codp = ? AND lote = ?', [id, lote_original]);
-        if (produtoAtual.length === 0) return res.status(404).json({ mensagem: 'Produto não encontrado.' });
+        // 🟢 Voltamos a usar o lote_original na busca (chave primária composta)
+        const [produtoAtual] = await db.execute(
+            'SELECT nome, preco_venda, qtde_estoque, preco_custo, lote FROM Produto WHERE codp = ? AND lote = ?', 
+            [id, lote_original ?? ''] // <-- Proteção caso venha nulo
+        );
+        
+        if (produtoAtual.length === 0) return res.status(404).json({ mensagem: 'Produto não encontrado no lote especificado.' });
         
         const p = produtoAtual[0];
+        
         const nomeFinal = nome !== undefined ? nome : p.nome;
-        const precoFinal = preco_venda !== undefined ? preco_venda : p.preco_venda;
         const qtdeFinal = qtde_estoque !== undefined ? qtde_estoque : p.qtde_estoque;
         const custoFinal = preco_custo !== undefined ? preco_custo : p.preco_custo;
         const loteFinal = lote !== undefined ? lote : p.lote;
+        const precoFinal = preco !== undefined ? preco : (preco_venda !== undefined ? preco_venda : p.preco_venda);
 
         let textoAuditoria = descricao;
         let registrarAuditoria = false;
@@ -207,29 +223,30 @@ app.put('/produtos/:id', async (req, res) => {
             registrarAuditoria = true;
         }
 
+        // 🟢 Voltamos a usar o lote_original no UPDATE
         const sql = 'UPDATE Produto SET nome = ?, preco_venda = ?, qtde_estoque = ?, preco_custo = ?, lote = ? WHERE codp = ? AND lote = ?';
-        await db.execute(sql, [nomeFinal, precoFinal, qtdeFinal, custoFinal, loteFinal, id, lote_original]);
+        await db.execute(sql, [
+            nomeFinal ?? null, 
+            precoFinal ?? null, 
+            qtdeFinal ?? null, 
+            custoFinal ?? null, 
+            loteFinal ?? null, 
+            id, 
+            lote_original ?? ''
+        ]);
         
         if (registrarAuditoria) {
             const descSegura = textoAuditoria.substring(0, 40);
-            await db.execute(`INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)`, 
-                [qtdeFinal, id, codu, descSegura, loteFinal]); 
+            await db.execute(
+                `INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)`, 
+                [qtdeFinal ?? null, id, codu ?? null, descSegura ?? null, loteFinal ?? null]
+            ); 
         }
 
         res.status(200).json({ mensagem: 'Produto atualizado!', id_atualizado: id });
     } catch (erro) { 
         console.error(`Erro no PUT /produtos/${req.params.id}:`, erro);
         res.status(500).json({ mensagem: 'Erro interno.' }); 
-    }
-});
-
-app.get('/produtos', async (req, res) => {
-    try {
-        const [linhas] = await db.execute('SELECT * FROM Produto'); 
-        res.status(200).json(linhas);
-    } catch (erro) { 
-        console.error('Erro no GET /produtos:', erro);
-        res.status(500).json({ mensagem: 'Erro interno' }); 
     }
 });
 
@@ -274,30 +291,45 @@ app.put('/bens/:id', async (req, res) => {
 });
 
 app.post('/bens', async (req, res) => {
-    const { coda, nome, qtde, valor, descricao = 'ENTRADA: Novo ativo', codu = 1 } = req.body;
+    // Retiramos o 'coda' daqui. O frontend não precisa mais mandar.
+    const { nome, qtde, valor, descricao = 'ENTRADA: Novo ativo', codu = 1 } = req.body;
     const descSegura = descricao.substring(0, 38);
 
     try {
-        await db.execute('INSERT INTO Ativo (coda, qtde, valor, nome) VALUES (?, ?, ?, ?)', [coda, qtde, valor, nome]);
+        // 1. Inserimos na tabela Ativo SEM o campo 'coda'
+        const [resultado] = await db.execute(
+            'INSERT INTO Ativo (qtde, valor, nome) VALUES (?, ?, ?)', 
+            [qtde ?? null, valor ?? null, nome ?? null]
+        );
+        
+        // 2. Capturamos o ID (coda) gerado automaticamente pelo banco
+        const novoCoda = resultado.insertId; 
+        
         try {
-            await db.execute('INSERT INTO SaldoItem (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', [qtde, codu, descSegura, coda]);
-            res.status(201).json({ mensagem: 'Ativo cadastrado com sucesso!' });
+            // 3. Usamos o 'novoCoda' na tabela de auditoria
+            await db.execute(
+                'INSERT INTO SaldoItem (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', 
+                [qtde ?? null, codu ?? null, descSegura ?? null, novoCoda]
+            );
+            
+            res.status(201).json({ 
+                mensagem: 'Ativo cadastrado com sucesso!',
+                codigoGerado: novoCoda // É legal devolver o ID gerado para o frontend
+            });
         } catch (erroAuditoria) {
             try {
-                await db.execute('DELETE FROM Ativo WHERE coda = ?', [coda]);
+                // O Rollback agora usa o 'novoCoda'
+                await db.execute('DELETE FROM Ativo WHERE coda = ?', [novoCoda]);
             } catch (erroRollback) {
-                console.error('Falha crítica ao tentar deletar o ativo órfão:', erroRollback);
+                console.error('Falha crítica ao deletar o ativo:', erroRollback);
             }
-            console.error('Falha na auditoria de ativos:', erroAuditoria);
-            res.status(500).json({ mensagem: 'Falha na auditoria do banco', detalhe: erroAuditoria.message });
+            res.status(500).json({ mensagem: 'Falha na auditoria', detalhe: erroAuditoria.message });
         }
     } catch (erroAtivo) {
         console.error('Erro no POST /bens:', erroAtivo);
-        if (erroAtivo.code === 'ER_DUP_ENTRY') return res.status(400).json({ mensagem: `O código '${coda}' já está em uso.` });
         res.status(500).json({ mensagem: 'Erro ao cadastrar o ativo.', detalhe: erroAtivo.message });
     }
 });
-
 app.delete('/bens/:id', async (req, res) => {
     try {
         const { id } = req.params; 
@@ -331,7 +363,7 @@ app.get('/comandas', async (req, res) => {
                 COALESCE(SUM(p.valor), 0) AS valor_pago
             FROM Comanda v
             LEFT JOIN Pagamento p ON v.codc = p.codc
-            WHERE v.status = 'aberta'
+            WHERE v.status = 1
             GROUP BY v.codc, v.nick, v.valor_total, v.data_venda, v.status
             ORDER BY v.data_venda DESC
         `;
@@ -348,9 +380,9 @@ app.post('/comandas', async (req, res) => {
         const { nick } = req.body;
         if (!nick || nick.trim() === '') return res.status(400).json({ mensagem: 'Nome obrigatório.' });
         const nickFormatado = nick.trim();
-        const [comandaExistente] = await db.execute("SELECT codc FROM Comanda WHERE nick = ? AND status = 'aberta'", [nickFormatado]);
+        const [comandaExistente] = await db.execute("SELECT codc FROM Comanda WHERE nick = ? AND status = 1", [nickFormatado]);
         if (comandaExistente.length > 0) return res.status(400).json({ mensagem: 'Já existe comanda ativa.' });
-        const [resultado] = await db.execute("INSERT INTO Comanda (valor_total, nick, status) VALUES (0.00, ?, 'aberta')", [nickFormatado]);
+        const [resultado] = await db.execute("INSERT INTO Comanda (valor_total, nick, status) VALUES (0.00, ?, 1)", [nickFormatado]);
         res.status(201).json({ mensagem: 'Criada!', codc: resultado.insertId });
     } catch (erro) { 
         console.error('Erro no POST /comandas:', erro);
@@ -545,7 +577,7 @@ app.post('/comandas/:id/pagamentos', async (req, res) => {
 app.put('/comandas/:id/fechar', async (req, res) => {
     try {
         const { id } = req.params;
-        await db.execute("UPDATE Comanda SET status = 'paga' WHERE codc = ?", [id]);
+        await db.execute("UPDATE Comanda SET status = 0 WHERE codc = ?", [id]);
         res.status(200).json({ mensagem: 'Comanda fechada!' });
     } catch (erro) { 
         console.error(`Erro no PUT /comandas/${req.params.id}/fechar:`, erro);

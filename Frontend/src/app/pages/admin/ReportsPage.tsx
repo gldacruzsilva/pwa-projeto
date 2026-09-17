@@ -73,6 +73,11 @@ export default function ReportsPage() {
     revenue: number;
   } | null>(null);
 
+  // 🟢 Novos estados para armazenar os dados reais vindos do banco
+  // 🟢 Inicializando com as chaves exatas exigidas pelo TypeScript
+  const [paymentStats, setPaymentStats] = useState<any>({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
+  const [paymentUnits, setPaymentUnits] = useState<any>({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
+
   const validateDateYear = (date: string): boolean => {
     if (!date) return true;
     
@@ -92,62 +97,115 @@ export default function ReportsPage() {
     setDateError('');
     return true;
   };
-
+// 🟢 Função para buscar as formas de pagamento no backend
+  const handleViewDetails = async (item: any) => {
+    try {
+      const response = await fetch(`http://localhost:3000/relatorios/produtos/${encodeURIComponent(item.product)}/pagamentos?inicio=${startDate}&fim=${endDate}`);
+      
+      if (response.ok) {
+        const dados = await response.json();
+        
+        // Formata os dados recebidos para o formato que o seu Modal já espera
+        const stats: Record<string, number> = {};
+        const units: Record<string, number> = {};
+        
+        dados.forEach((d: any) => {
+          stats[d.name] = Number(d.value);
+          units[d.name] = Number(d.units);
+        });
+        
+        setPaymentStats(stats);
+        setPaymentUnits(units);
+        
+        // Abre o modal com os dados corretos
+      setSelectedProduct({
+        code: item.code,       // <--- Mude de item.product para item.code
+        name: item.product,
+        revenue: item.revenue,
+      });
+      } else {
+        toast.error('Nenhum detalhe de pagamento encontrado.');
+      }
+    } catch (erro) {
+      toast.error('Erro ao buscar pagamentos do backend.');
+    }
+  };
   const carregarRelatorios = async () => {
     try {
-      // 🟢 BUSCANDO DADOS REAIS DO BACKEND
-      const response = await fetch(`${API_URL}/relatorios/vendas`);
+      // 1. Busca Vendas/Comandas
+      const response = await fetch(`http://localhost:3000/relatorios/vendas`);
       if (!response.ok) throw new Error('Erro ao buscar comandas');
       
       const comandas = await response.json();
+      
+      // LOG PARA DEPURAR: Abra o console (F12) no navegador para ver o formato real que o backend manda
+      console.log('Comandas recebidas do backend:', comandas);
+      
       if (!Array.isArray(comandas)) return;
       
       const comandasFiltradas = comandas.filter((c: any) => {
-        if (!c.data_venda) return false;
-        const dateStr = c.data_venda.split('T')[0]; 
+        // Tenta achar o campo de data (pode vir como data_venda, data ou data_hora dependendo do seu backend)
+        const campoData = c.data_venda || c.data || c.data_hora;
+        if (!campoData) return false;
+        
+        // Pega apenas os 10 primeiros caracteres (YYYY-MM-DD), ignorando horas, espaços ou "T"
+        const dateStr = campoData.toString().substring(0, 10); 
         return dateStr >= startDate && dateStr <= endDate;
       });
 
       let receita = 0;
-      comandasFiltradas.forEach((c: any) => {
-        receita += Number(c.valor_total || 0);
-      });
-      setTotalRevenue(receita);
-      setTotalOrders(comandasFiltradas.length);
-
       const dailyMap: Record<string, any> = {};
+      const monthlyMap: Record<string, any> = {};
+
       comandasFiltradas.forEach((c: any) => {
-        const dateStr = c.data_venda.split('T')[0];
+        // Tenta achar o valor total (pode vir como valor_total, total, ou valor)
+        const valorComanda = Number(c.valor_total || c.total || c.valor || 0);
+        receita += valorComanda;
+
+        // --- LÓGICA DIÁRIA ---
+        const campoData = c.data_venda || c.data || c.data_hora;
+        const dateStr = campoData.toString().substring(0, 10);
+        
         if (!dailyMap[dateStr]) {
           dailyMap[dateStr] = { date: dateStr, total: 0, orders: 0 };
         }
-        dailyMap[dateStr].total += Number(c.valor_total || 0);
+        dailyMap[dateStr].total += valorComanda;
         dailyMap[dateStr].orders += 1;
-      });
-      setSalesData(Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date)));
 
-      const monthlyMap: Record<string, any> = {};
-      comandasFiltradas.forEach((c: any) => {
-        const date = new Date(c.data_venda);
-        const monthStr = date.toLocaleString('pt-BR', { month: 'short' });
-        const sortKey = `${date.getFullYear()}-${date.getMonth().toString().padStart(2, '0')}`;
+        // --- LÓGICA MENSAL ---
+        // Força a criação de uma data válida substituindo hífens por barras se necessário, 
+        // ou adicionando um horário falso para evitar erro de fuso horário no JS
+        const dateObj = new Date(`${dateStr}T12:00:00`); 
+        const monthStr = dateObj.toLocaleString('pt-BR', { month: 'short' });
+        const sortKey = `${dateObj.getFullYear()}-${dateObj.getMonth().toString().padStart(2, '0')}`;
         
         if (!monthlyMap[monthStr]) {
-          monthlyMap[monthStr] = { month: monthStr.charAt(0).toUpperCase() + monthStr.slice(1), revenue: 0, sortKey };
+          monthlyMap[monthStr] = { 
+            month: monthStr.charAt(0).toUpperCase() + monthStr.slice(1), 
+            revenue: 0, 
+            sortKey 
+          };
         }
-        monthlyMap[monthStr].revenue += Number(c.valor_total || 0);
+        monthlyMap[monthStr].revenue += valorComanda;
       });
+
+      setTotalRevenue(receita);
+      setTotalOrders(comandasFiltradas.length);
+      setSalesData(Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date)));
       setMonthlyData(Object.values(monthlyMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)));
 
+      // 2. Busca Produtos
       try {
-        const prodRes = await fetch(`${API_URL}/relatorios/produtos?inicio=${startDate}&fim=${endDate}`);
+        const prodRes = await fetch(`http://localhost:3000/relatorios/produtos?inicio=${startDate}&fim=${endDate}`);
         if (prodRes.ok) {
           const prodData = await prodRes.json();
+          console.log('Produtos recebidos do backend:', prodData); // Ajuda a debugar
+
           const formatados = prodData.map((p: any) => ({
-            product: p.product,
-            quantity: Number(p.quantity || 0),
-            revenue: Number(p.revenue || 0)
-          }));
+          product: p.product || p.nome || 'Produto sem nome',
+          quantity: Number(p.quantity || p.qtde || 0),
+          revenue: Number(p.revenue || p.valor_total || 0)
+        }));
           setProductSales(formatados);
         }
       } catch (err) {
@@ -156,7 +214,7 @@ export default function ReportsPage() {
       }
 
     } catch (error) {
-      console.error(error);
+      console.error('Erro na requisição de relatórios:', error);
       toast.error('Erro ao carregar dados do relatório. Verifique o console.');
     }
   };
@@ -391,13 +449,7 @@ export default function ReportsPage() {
                         <IconButton
                           size="small"
                           color="primary"
-                          onClick={() =>
-                            setSelectedProduct({
-                              code: '7891234567890',
-                              name: item.product,
-                              revenue: item.revenue,
-                            })
-                          }
+                          onClick={() => handleViewDetails(item)}
                         >
                           <Info />
                         </IconButton>
@@ -411,13 +463,21 @@ export default function ReportsPage() {
         )}
       </Paper>
 
-      {selectedProduct && (
+    {selectedProduct && (
         <ProductPaymentDetailsDialog
           productName={selectedProduct.name}
           productCode={selectedProduct.code}
           totalRevenue={selectedProduct.revenue}
-          paymentStats={getPaymentStatsByProduct(selectedProduct.code)}
-          paymentUnits={getPaymentUnitsByProduct(selectedProduct.code)}
+          
+          // 🟢 O Proxy garante que qualquer chave solicitada retorne no mínimo 0
+          paymentStats={new Proxy(paymentStats, { 
+            get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 
+          })}
+          
+          paymentUnits={new Proxy(paymentUnits, { 
+            get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 
+          })}
+          
           onClose={() => setSelectedProduct(null)}
         />
       )}

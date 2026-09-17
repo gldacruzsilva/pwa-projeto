@@ -69,13 +69,9 @@ export default function ProductPaymentDetailsDialog({
         <Box className="flex justify-between items-center">
           <Box>
             <Typography variant="h6">{productName}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Código: {productCode}
-            </Typography>
+         
           </Box>
-          <IconButton onClick={onClose}>
-            <Close />
-          </IconButton>
+          
         </Box>
       </DialogTitle>
 
@@ -91,13 +87,11 @@ export default function ProductPaymentDetailsDialog({
           </CardContent>
         </Card>
 
-        <Typography variant="h6" className="mb-3">
-          Receita por Forma de Pagamento
-        </Typography>
+        
 
         <Grid container spacing={2}>
           {paymentMethods.map((method) => (
-            <Grid item xs={6} key={method.key}>
+           <Grid size={{ xs: 6 }} key={method.key}>
               <Card>
                 <CardContent>
                   <Box className="flex items-center justify-between mb-2">
@@ -122,9 +116,26 @@ export default function ProductPaymentDetailsDialog({
         </Grid>
       </DialogContent>
 
-      <DialogActions>
-        <Button onClick={onClose}>Fechar</Button>
-      </DialogActions>
+      
+  <IconButton
+    aria-label="close"
+    onClick={onClose}
+    sx={{
+      position: 'absolute',
+      right: 12,
+      top: 12,
+      backgroundColor: '#ef4444', // Fundo vermelho
+      color: 'white',             // Ícone branco
+      width: 32,
+      height: 32,
+      '&:hover': {
+        backgroundColor: '#dc2626', // Vermelho mais escuro no hover
+      },
+    }}
+  >
+    <Close fontSize="small" />
+  </IconButton>
+
     </Dialog>
   );
 }

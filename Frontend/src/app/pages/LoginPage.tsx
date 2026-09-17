@@ -42,7 +42,7 @@ export default function LoginPage() {
         if (usuarioLogado.tipo === 'admin' || usuarioLogado.tipo === 'administrador') {
           navigate('/admin');
         } else {
-          navigate('/employee');
+          navigate('/funcionario');
         }
       } else {
         setError('Usuário ou senha incorretos. Verifique as credenciais.');

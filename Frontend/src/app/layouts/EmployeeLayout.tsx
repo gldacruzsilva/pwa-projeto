@@ -28,8 +28,8 @@ const drawerWidth = 240;
 
 // 🟢 Adicionamos o "Receber Estoque" logo abaixo de "Comandas"
 const menuItems = [
-  { text: 'Comandas', icon: <Receipt />, path: '/employee' },
-  { text: 'Movimentação', icon: <LocalShipping />, path: '/employee/stock-receipt' }, 
+  { text: 'Comandas', icon: <Receipt />, path: 'comandas' },
+  { text: 'Movimentação', icon: <LocalShipping />, path: 'estoque' }, 
 ];
 
 export default function EmployeeLayout() {
