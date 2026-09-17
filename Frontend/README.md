@@ -1,11 +1,13 @@
 
   # Sistema de Gestão para Campo Society
 
-  This is a code bundle for Sistema de Gestão para Campo Society. The original project is available at https://www.figma.com/design/4dvMaFfhmHjoZkdEqcQSvC/Sistema-de-Gest%C3%A3o-para-Campo-Society.
+  ## Rodar o código
 
-  ## Running the code
+cd backend
+   `npm i` para instalar as dependências. 
+   `node app.js` para iniciar o backend
 
-  Run `npm i` to install the dependencies.
-
-  Run `npm run dev` to start the development server.
+cd frontend
+   `npm i` para instalar as dependências. 
+   `npm run dev` para iniciar o frontend
   
