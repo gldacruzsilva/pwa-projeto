@@ -27,7 +27,8 @@ export default function StockReceiptTab() {
 
   const buscarProdutos = async () => {
     try {
-      const resposta = await fetch('http://localhost:3000/produtos');
+      // 🟢 ROTA CORRIGIDA PARA FUNCIONAR NO CELULAR
+      const resposta = await fetch('/api/produtos');
       if (resposta.ok) {
         const dados = await resposta.json();
         setProductList(Array.isArray(dados) ? dados : dados.produtos || []);
@@ -37,10 +38,20 @@ export default function StockReceiptTab() {
 
   useEffect(() => { buscarProdutos(); }, []);
 
+  // 🟢 BLOQUEADORES DE TECLADO
+  const blockInvalidInteger = (e: React.KeyboardEvent) => {
+    if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) e.preventDefault();
+  };
+
+  const blockInvalidDecimal = (e: React.KeyboardEvent) => {
+    if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
+  };
+
   const handleCadastrarNovoProduto = async () => {
     if (!novoProduto.codp.trim() || !novoProduto.nome.trim()) return toast.error('Preencha os campos!');
     try {
-      const resposta = await fetch('http://localhost:3000/produtos', {
+      // 🟢 ROTA CORRIGIDA PARA FUNCIONAR NO CELULAR
+      const resposta = await fetch('/api/produtos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -117,7 +128,8 @@ export default function StockReceiptTab() {
           throw new Error(`Estoque insuficiente para a saída do produto: ${item.productName}`);
         }
 
-        return fetch(`http://localhost:3000/produtos/${item.productCode}`, {
+        // 🟢 ROTA CORRIGIDA PARA FUNCIONAR NO CELULAR
+        return fetch(`/api/produtos/${item.productCode}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -201,24 +213,23 @@ export default function StockReceiptTab() {
                           <MenuItem value="entrada">Entrada</MenuItem>
                           <MenuItem value="saida">Saída</MenuItem>
                         </TextField>
-                        {/* 🟢 Campos desativados para o funcionário */}
                         <TextField fullWidth label="Lote" value={item.batch} size="small" disabled={true} />
                       </Box>
                       
                       <Box display="flex" gap={2}>
-                        {/* 🟢 Campos desativados para o funcionário */}
                         <TextField fullWidth label="Custo (R$)" type="number" value={item.costPrice} size="small" disabled={true} />
                         <TextField fullWidth label="Venda (R$)" type="number" value={item.preco_venda} size="small" disabled={true} />
                       </Box>
 
                       <Box display="flex" gap={1} alignItems="center">
-                        {/* 🟢 Setas inseridas para o funcionário com bloqueio negativo */}
                         <IconButton size="small" onClick={() => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, i.quantity - 1)} : i))}>
                           <Remove />
                         </IconButton>
                         <TextField 
                           fullWidth label="Quantidade" type="number" value={item.quantity} size="small"
                           onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, Number(e.target.value))} : i))}
+                          onKeyDown={blockInvalidInteger}
+                          inputProps={{ min: 0, step: 1 }}
                         />
                         <IconButton size="small" onClick={() => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: i.quantity + 1} : i))}>
                           <Add />
@@ -256,18 +267,22 @@ export default function StockReceiptTab() {
                         </TextField>
                       </TableCell>
                       
-                      {/* 🟢 Campos desativados para o funcionário */}
                       <TableCell><TextField value={item.batch} size="small" disabled={true} /></TableCell>
                       <TableCell><TextField type="number" value={item.costPrice} size="small" disabled={true} /></TableCell>
                       <TableCell><TextField type="number" value={item.preco_venda} size="small" disabled={true} /></TableCell>
                       
-                      {/* 🟢 Setas inseridas para o funcionário com bloqueio negativo */}
                       <TableCell align="center">
                         <Box display="flex" alignItems="center" gap={1} justifyContent="center">
                           <IconButton size="small" onClick={() => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, i.quantity - 1)} : i))}>
                             <Remove fontSize="small" />
                           </IconButton>
-                          <TextField type="number" value={item.quantity} onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, Number(e.target.value))} : i))} size="small" sx={{ width: 80 }} />
+                          <TextField 
+                            type="number" value={item.quantity} 
+                            onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, Number(e.target.value))} : i))} 
+                            size="small" sx={{ width: 80 }} 
+                            onKeyDown={blockInvalidInteger}
+                            inputProps={{ min: 0, step: 1 }}
+                          />
                           <IconButton size="small" onClick={() => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: i.quantity + 1} : i))}>
                             <Add fontSize="small" />
                           </IconButton>
@@ -300,13 +315,33 @@ export default function StockReceiptTab() {
         <DialogTitle>Cadastrar Novo Produto</DialogTitle>
         <DialogContent dividers>
           <Box display="flex" flexDirection="column" gap={3} mt={1}>
-            <TextField label="Código (Barras)" fullWidth value={novoProduto.codp} onChange={(e) => setNovoProduto({ ...novoProduto, codp: e.target.value })} />
+            <TextField 
+              label="Código (Barras)" fullWidth type="number" value={novoProduto.codp} 
+              onChange={(e) => setNovoProduto({ ...novoProduto, codp: e.target.value })} 
+              onKeyDown={blockInvalidInteger}
+              inputProps={{ min: 0, step: 1 }}
+            />
             <TextField label="Nome" fullWidth value={novoProduto.nome} onChange={(e) => setNovoProduto({ ...novoProduto, nome: e.target.value })} />
             <Box display="flex" gap={2}>
-              <TextField label="Lote Inicial" fullWidth value={novoProduto.lote} onChange={(e) => setNovoProduto({ ...novoProduto, lote: e.target.value })} />
-              <TextField label="Preço Custo" type="number" fullWidth value={novoProduto.preco_custo} onChange={(e) => setNovoProduto({ ...novoProduto, preco_custo: e.target.value })} />
+              <TextField 
+                label="Lote Inicial" fullWidth type="number" value={novoProduto.lote} 
+                onChange={(e) => setNovoProduto({ ...novoProduto, lote: e.target.value })} 
+                onKeyDown={blockInvalidInteger}
+                inputProps={{ min: 0, step: 1 }}
+              />
+              <TextField 
+                label="Preço Custo" type="number" fullWidth value={novoProduto.preco_custo} 
+                onChange={(e) => setNovoProduto({ ...novoProduto, preco_custo: e.target.value })} 
+                onKeyDown={blockInvalidDecimal}
+                inputProps={{ min: 0, step: 0.01 }}
+              />
             </Box>
-            <TextField label="Preço Comanda" type="number" fullWidth value={novoProduto.preco} onChange={(e) => setNovoProduto({ ...novoProduto, preco: e.target.value })} />
+            <TextField 
+              label="Preço Comanda" type="number" fullWidth value={novoProduto.preco} 
+              onChange={(e) => setNovoProduto({ ...novoProduto, preco: e.target.value })} 
+              onKeyDown={blockInvalidDecimal}
+              inputProps={{ min: 0, step: 0.01 }}
+            />
           </Box>
         </DialogContent>
         <DialogActions>

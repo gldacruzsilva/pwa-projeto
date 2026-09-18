@@ -26,10 +26,8 @@ import {
   Search,
 } from '@mui/icons-material';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { useOrders } from '../../contexts/OrderContext';
 import ProductPaymentDetailsDialog from '../../components/admin/ProductPaymentDetailsDialog';
 import { toast } from 'sonner';
-import { API_URL } from '../../../services/api';
 
 // Função para formatar a data de AAAA-MM-DD para DD/MM/AAAA no gráfico
 const formatarDataBR = (dataISO: string) => {
@@ -49,10 +47,7 @@ const formatarDinheiroBR = (valor: number) => {
 
 export default function ReportsPage() {
   const theme = useTheme();
-  // 🟢 Hook para detectar telas de celular
   const isMobile = useMediaQuery(theme.breakpoints.down('sm')); 
-  
-  const { getPaymentStatsByProduct, getPaymentUnitsByProduct } = useOrders();
   
   const hoje = new Date();
   const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
@@ -73,8 +68,6 @@ export default function ReportsPage() {
     revenue: number;
   } | null>(null);
 
-  // 🟢 Novos estados para armazenar os dados reais vindos do banco
-  // 🟢 Inicializando com as chaves exatas exigidas pelo TypeScript
   const [paymentStats, setPaymentStats] = useState<any>({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
   const [paymentUnits, setPaymentUnits] = useState<any>({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
 
@@ -97,15 +90,15 @@ export default function ReportsPage() {
     setDateError('');
     return true;
   };
-// 🟢 Função para buscar as formas de pagamento no backend
+
   const handleViewDetails = async (item: any) => {
     try {
-      const response = await fetch(`http://localhost:3000/relatorios/produtos/${encodeURIComponent(item.product)}/pagamentos?inicio=${startDate}&fim=${endDate}`);
+      // 🟢 Corrigido para /api relativo para funcionar no celular
+      const response = await fetch(`/api/relatorios/produtos/${encodeURIComponent(item.product)}/pagamentos?inicio=${startDate}&fim=${endDate}`);
       
       if (response.ok) {
         const dados = await response.json();
         
-        // Formata os dados recebidos para o formato que o seu Modal já espera
         const stats: Record<string, number> = {};
         const units: Record<string, number> = {};
         
@@ -117,12 +110,11 @@ export default function ReportsPage() {
         setPaymentStats(stats);
         setPaymentUnits(units);
         
-        // Abre o modal com os dados corretos
-      setSelectedProduct({
-        code: item.code,       // <--- Mude de item.product para item.code
-        name: item.product,
-        revenue: item.revenue,
-      });
+        setSelectedProduct({
+          code: item.code || 'Sistema', 
+          name: item.product,
+          revenue: item.revenue,
+        });
       } else {
         toast.error('Nenhum detalhe de pagamento encontrado.');
       }
@@ -130,25 +122,20 @@ export default function ReportsPage() {
       toast.error('Erro ao buscar pagamentos do backend.');
     }
   };
+
   const carregarRelatorios = async () => {
     try {
-      // 1. Busca Vendas/Comandas
-      const response = await fetch(`http://localhost:3000/relatorios/vendas`);
+      // 🟢 Corrigido para /api relativo
+      const response = await fetch(`/api/relatorios/vendas`);
       if (!response.ok) throw new Error('Erro ao buscar comandas');
       
       const comandas = await response.json();
       
-      // LOG PARA DEPURAR: Abra o console (F12) no navegador para ver o formato real que o backend manda
-      console.log('Comandas recebidas do backend:', comandas);
-      
       if (!Array.isArray(comandas)) return;
       
       const comandasFiltradas = comandas.filter((c: any) => {
-        // Tenta achar o campo de data (pode vir como data_venda, data ou data_hora dependendo do seu backend)
         const campoData = c.data_venda || c.data || c.data_hora;
         if (!campoData) return false;
-        
-        // Pega apenas os 10 primeiros caracteres (YYYY-MM-DD), ignorando horas, espaços ou "T"
         const dateStr = campoData.toString().substring(0, 10); 
         return dateStr >= startDate && dateStr <= endDate;
       });
@@ -158,11 +145,9 @@ export default function ReportsPage() {
       const monthlyMap: Record<string, any> = {};
 
       comandasFiltradas.forEach((c: any) => {
-        // Tenta achar o valor total (pode vir como valor_total, total, ou valor)
         const valorComanda = Number(c.valor_total || c.total || c.valor || 0);
         receita += valorComanda;
 
-        // --- LÓGICA DIÁRIA ---
         const campoData = c.data_venda || c.data || c.data_hora;
         const dateStr = campoData.toString().substring(0, 10);
         
@@ -172,9 +157,6 @@ export default function ReportsPage() {
         dailyMap[dateStr].total += valorComanda;
         dailyMap[dateStr].orders += 1;
 
-        // --- LÓGICA MENSAL ---
-        // Força a criação de uma data válida substituindo hífens por barras se necessário, 
-        // ou adicionando um horário falso para evitar erro de fuso horário no JS
         const dateObj = new Date(`${dateStr}T12:00:00`); 
         const monthStr = dateObj.toLocaleString('pt-BR', { month: 'short' });
         const sortKey = `${dateObj.getFullYear()}-${dateObj.getMonth().toString().padStart(2, '0')}`;
@@ -194,18 +176,16 @@ export default function ReportsPage() {
       setSalesData(Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date)));
       setMonthlyData(Object.values(monthlyMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)));
 
-      // 2. Busca Produtos
       try {
-        const prodRes = await fetch(`http://localhost:3000/relatorios/produtos?inicio=${startDate}&fim=${endDate}`);
+        // 🟢 Corrigido para /api relativo
+        const prodRes = await fetch(`/api/relatorios/produtos?inicio=${startDate}&fim=${endDate}`);
         if (prodRes.ok) {
           const prodData = await prodRes.json();
-          console.log('Produtos recebidos do backend:', prodData); // Ajuda a debugar
-
           const formatados = prodData.map((p: any) => ({
-          product: p.product || p.nome || 'Produto sem nome',
-          quantity: Number(p.quantity || p.qtde || 0),
-          revenue: Number(p.revenue || p.valor_total || 0)
-        }));
+            product: p.product || p.nome || 'Produto sem nome',
+            quantity: Number(p.quantity || p.qtde || 0),
+            revenue: Number(p.revenue || p.valor_total || 0)
+          }));
           setProductSales(formatados);
         }
       } catch (err) {
@@ -215,7 +195,7 @@ export default function ReportsPage() {
 
     } catch (error) {
       console.error('Erro na requisição de relatórios:', error);
-      toast.error('Erro ao carregar dados do relatório. Verifique o console.');
+      toast.error('Erro ao carregar dados do relatório. Verifique a conexão com o banco.');
     }
   };
 
@@ -230,7 +210,6 @@ export default function ReportsPage() {
           Filtrar Período
         </Typography>
         
-        {/* 🟢 Campos responsivos (Empilham no celular, lado a lado no PC) */}
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3, alignItems: { xs: 'stretch', sm: 'flex-start' } }}>
           <TextField
             label="Data Início"
@@ -342,7 +321,6 @@ export default function ReportsPage() {
             <Typography variant="h6" sx={{ mb: 4, fontWeight: 'bold' }}>
               Receita Mensal
             </Typography>
-            {/* 🟢 Correção: Removida a duplicação do ResponsiveContainer */}
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={monthlyData} margin={{ top: 10, right: 30, left: 40, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
@@ -374,7 +352,6 @@ export default function ReportsPage() {
           Produtos Mais Vendidos
         </Typography>
 
-        {/* 🟢 RENDERIZAÇÃO CONDICIONAL: CARDS NO CELULAR, TABELA NO PC */}
         {isMobile ? (
           <Box display="flex" flexDirection="column" gap={2}>
             {productSales.map((item) => (
@@ -387,14 +364,8 @@ export default function ReportsPage() {
                     <IconButton
                       size="small"
                       color="primary"
-                      sx={{ ml: 1, mt: -0.5 }} // Ajuste fino visual
-                      onClick={() =>
-                        setSelectedProduct({
-                          code: '7891234567890', // Mantenha a lógica do código original
-                          name: item.product,
-                          revenue: item.revenue,
-                        })
-                      }
+                      sx={{ ml: 1, mt: -0.5 }}
+                      onClick={() => handleViewDetails(item)} // 🟢 Corrigido para abrir no Mobile
                     >
                       <Info />
                     </IconButton>
@@ -468,16 +439,12 @@ export default function ReportsPage() {
           productName={selectedProduct.name}
           productCode={selectedProduct.code}
           totalRevenue={selectedProduct.revenue}
-          
-          // 🟢 O Proxy garante que qualquer chave solicitada retorne no mínimo 0
           paymentStats={new Proxy(paymentStats, { 
             get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 
           })}
-          
           paymentUnits={new Proxy(paymentUnits, { 
             get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 
           })}
-          
           onClose={() => setSelectedProduct(null)}
         />
       )}

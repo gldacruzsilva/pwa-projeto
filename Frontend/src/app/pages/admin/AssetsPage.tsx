@@ -20,6 +20,11 @@ import {
   Autocomplete,
   MenuItem,
   Alert,
+  Card,
+  CardContent,
+  Divider,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import { Edit, Delete, SwapHoriz, AddCircleOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
@@ -55,6 +60,9 @@ export default function AssetsPage() {
     value: '',
   });
 
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const usuarioString = localStorage.getItem('usuarioAtivo');
   const usuarioLogado = usuarioString 
     ? JSON.parse(usuarioString) 
@@ -68,7 +76,6 @@ export default function AssetsPage() {
       if (response.ok) {
         const dados = await response.json();
         const ativosFormatados = dados.map((item: any) => ({
-          // CORREÇÃO: Usando 'coda' que é o nome da coluna no seu backend, em vez de 'codi'
           id: item.coda, 
           code: item.coda.toString(), 
           name: item.nome,
@@ -143,7 +150,6 @@ export default function AssetsPage() {
 
   const handleSaveNovoAtivo = async () => {
     if (!isAdmin) return toast.error('Acesso negado.');
-    // CORREÇÃO: Removida a validação do formData.code
     if (!formData.name.trim() || !formData.quantity.trim() || !formData.value.trim()) {
       toast.error('Preencha todos os campos obrigatórios');
       return;
@@ -154,8 +160,6 @@ export default function AssetsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          // CORREÇÃO: O banco com Auto-Increment vai gerar o 'coda'. 
-          // Retirado o envio do formData.code.
           nome: formData.name,
           qtde: parseInt(formData.quantity), 
           valor: parseFloat(formData.value),
@@ -233,12 +237,14 @@ export default function AssetsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', mb: 4 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mb: 4 }}>
         {isAdmin ? (
-          <Box display="flex" gap={2}>
+          <>
             <Button
               variant="outlined"
               startIcon={<AddCircleOutline />}
+              fullWidth={isMobile}
+              sx={{ height: 48 }}
               onClick={() => {
                 setFormData({ code: '', name: '', quantity: '', value: '' });
                 setOpenNovoDialog(true);
@@ -249,80 +255,156 @@ export default function AssetsPage() {
             <Button
               variant="contained"
               startIcon={<SwapHoriz />}
+              fullWidth={isMobile}
+              sx={{ height: 48 }}
               onClick={() => setOpenMovimentoDialog(true)}
             >
               Registrar Entrada ou Saída
             </Button>
-          </Box>
+          </>
         ) : (
-          <Alert severity="warning">Área restrita a administradores. Funcionários gerenciam apenas o estoque.</Alert>
+          <Alert severity="warning" sx={{ width: '100%' }}>Área restrita a administradores. Funcionários gerenciam apenas o estoque.</Alert>
         )}
       </Box>
         
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Código</TableCell>
-              <TableCell>Nome</TableCell>
-              <TableCell align="right">Quantidade</TableCell>
-              <TableCell align="right">Valor Unitário</TableCell>
-              <TableCell align="right">Total</TableCell>
-              {isAdmin && <TableCell align="center">Ações</TableCell>}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {assets.map((asset) => (
-              <TableRow key={asset.id}>
-                <TableCell>{asset.code}</TableCell>
-                <TableCell>{asset.name}</TableCell>
-                <TableCell align="right">{asset.quantity}</TableCell>
-                <TableCell align="right">R$ {asset.value.toFixed(2)}</TableCell>
-                <TableCell align="right" className="text-green-600 dark:text-green-400 font-medium">
-                  R$ {(asset.quantity * asset.value).toFixed(2)}
-                </TableCell>
-                {isAdmin && (
-                  <TableCell align="center">
-                    <IconButton size="small" color="primary" onClick={() => { setEditingAsset(asset); setFormData({ code: asset.code, name: asset.name, quantity: asset.quantity.toString(), value: asset.value.toString() }); setOpenEditDialog(true); }}>
-                      <Edit />
-                    </IconButton>
-                    <IconButton size="small" color="error" onClick={() => { setDeletingAsset(asset); setOpenDeleteDialog(true); }}>
-                      <Delete />
-                    </IconButton>
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-            {assets.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={isAdmin ? 6 : 5} align="center" sx={{ py: 3 }}>
-                  Nenhum ativo cadastrado no banco de dados.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-          
-          {assets.length > 0 && (
-            <TableFooter>
-              <TableRow sx={{ backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#272727' : '#f5f5f5' }}>
-                <TableCell colSpan={2} align="left">
-                  <Typography variant="subtitle1" fontWeight="bold">Total em Ativos</Typography>
-                </TableCell>
-                <TableCell align="right">
-                  <Typography variant="subtitle1" fontWeight="bold">{totalItems}</Typography>
-                </TableCell>
-                <TableCell></TableCell>
-                <TableCell align="right">
-                  <Typography variant="subtitle1" fontWeight="bold" color="success.main">
-                    R$ {totalValue.toFixed(2)}
-                  </Typography>
-                </TableCell>
-                {isAdmin && <TableCell></TableCell>}
-              </TableRow>
-            </TableFooter>
+      {isMobile ? (
+        <Box display="flex" flexDirection="column" gap={2}>
+          {assets.map((asset) => (
+            <Card key={asset.id} variant="outlined">
+              <CardContent sx={{ pb: '16px !important' }}>
+                <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
+                  <Box>
+                    <Typography variant="h6" fontWeight="bold" lineHeight={1.2}>
+                      {asset.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" mt={0.5}>
+                      Cód: {asset.code}
+                    </Typography>
+                  </Box>
+                  {isAdmin && (
+                    <Box display="flex" gap={0.5}>
+                      <IconButton size="small" color="primary" onClick={() => { setEditingAsset(asset); setFormData({ code: asset.code, name: asset.name, quantity: asset.quantity.toString(), value: asset.value.toString() }); setOpenEditDialog(true); }}>
+                        <Edit fontSize="small" />
+                      </IconButton>
+                      <IconButton size="small" color="error" onClick={() => { setDeletingAsset(asset); setOpenDeleteDialog(true); }}>
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  )}
+                </Box>
+
+                <Divider sx={{ my: 1.5 }} />
+
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" display="block">Quantidade</Typography>
+                    <Typography variant="body2" fontWeight="medium">{asset.quantity} un</Typography>
+                  </Box>
+                  <Box textAlign="right">
+                    <Typography variant="caption" color="text.secondary" display="block">Total (Ativo)</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                      R$ {(asset.quantity * asset.value).toFixed(2)}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" display="block">Valor Unitário</Typography>
+                    <Typography variant="body2">R$ {asset.value.toFixed(2)}</Typography>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          ))}
+          {assets.length === 0 && (
+            <Typography variant="body2" color="text.secondary" textAlign="center" py={2}>
+              Nenhum ativo cadastrado.
+            </Typography>
           )}
-        </Table>
-      </TableContainer>
+
+          {assets.length > 0 && (
+            <Card variant="outlined" sx={{ mt: 2, bgcolor: (theme) => theme.palette.mode === 'dark' ? '#272727' : '#f8fafc' }}>
+              <CardContent>
+                <Typography variant="subtitle1" fontWeight="bold" mb={2}>Resumo de Ativos</Typography>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Typography variant="body2" color="text.secondary">Quantidade Total</Typography>
+                  <Typography variant="body2" fontWeight="bold">{totalItems}</Typography>
+                </Box>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Valor Total</Typography>
+                  <Typography variant="body1" fontWeight="bold" color="success.main">R$ {totalValue.toFixed(2)}</Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Código</TableCell>
+                <TableCell>Nome</TableCell>
+                <TableCell align="right">Quantidade</TableCell>
+                <TableCell align="right">Valor Unitário</TableCell>
+                <TableCell align="right">Total</TableCell>
+                {isAdmin && <TableCell align="center">Ações</TableCell>}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {assets.map((asset) => (
+                <TableRow key={asset.id}>
+                  <TableCell>{asset.code}</TableCell>
+                  <TableCell>{asset.name}</TableCell>
+                  <TableCell align="right">{asset.quantity}</TableCell>
+                  <TableCell align="right">R$ {asset.value.toFixed(2)}</TableCell>
+                  <TableCell align="right" className="text-green-600 dark:text-green-400 font-medium">
+                    R$ {(asset.quantity * asset.value).toFixed(2)}
+                  </TableCell>
+                  {isAdmin && (
+                    <TableCell align="center">
+                      <IconButton size="small" color="primary" onClick={() => { setEditingAsset(asset); setFormData({ code: asset.code, name: asset.name, quantity: asset.quantity.toString(), value: asset.value.toString() }); setOpenEditDialog(true); }}>
+                        <Edit />
+                      </IconButton>
+                      <IconButton size="small" color="error" onClick={() => { setDeletingAsset(asset); setOpenDeleteDialog(true); }}>
+                        <Delete />
+                      </IconButton>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+              {assets.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 6 : 5} align="center" sx={{ py: 3 }}>
+                    Nenhum ativo cadastrado no banco de dados.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+            
+            {assets.length > 0 && (
+              <TableFooter>
+                <TableRow sx={{ backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#272727' : '#f5f5f5' }}>
+                  <TableCell colSpan={2} align="left">
+                    <Typography variant="subtitle1" fontWeight="bold">Total em Ativos</Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="subtitle1" fontWeight="bold">{totalItems}</Typography>
+                  </TableCell>
+                  <TableCell></TableCell>
+                  <TableCell align="right">
+                    <Typography variant="subtitle1" fontWeight="bold" color="success.main">
+                      R$ {totalValue.toFixed(2)}
+                    </Typography>
+                  </TableCell>
+                  {isAdmin && <TableCell></TableCell>}
+                </TableRow>
+              </TableFooter>
+            )}
+          </Table>
+        </TableContainer>
+      )}
 
       {/* MODAL 1: MOVIMENTAÇÃO */}
       <Dialog open={openMovimentoDialog} onClose={() => setOpenMovimentoDialog(false)} maxWidth="sm" fullWidth>
@@ -378,7 +460,6 @@ export default function AssetsPage() {
         <DialogTitle>Cadastrar Ativo</DialogTitle>
         <DialogContent dividers>
           <Box display="flex" flexDirection="column" gap={3} mt={1}>
-            {/* CORREÇÃO: Removido o campo "Código do Ativo" */}
             <TextField fullWidth label="Nome do Ativo" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
             <TextField fullWidth label="Quantidade Inicial" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} required />
             <TextField fullWidth label="Preço Unitário (R$)" type="number" inputProps={{ step: '0.01' }} value={formData.value} onChange={(e) => setFormData({ ...formData, value: e.target.value })} required />

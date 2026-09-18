@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import { CreditCard, AttachMoney, QrCode2, Delete, CheckCircle } from '@mui/icons-material';
 import { toast } from 'sonner';
-
+ 
 interface PaymentDialogProps {
   orderId: number;
   onClose: () => void;
@@ -49,11 +49,26 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
     return labels[method] || method;
   };
 
+  const total = order ? (Number(order.valor_total) || 0) : 0;
+  const alreadyPaid = order ? (Number(order.totalPaid) || 0) : 0;
+  const paymentsMade = payments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = alreadyPaid + paymentsMade;
+  
+  // 🟢 Arredondamento forçado para 2 casas decimais para anular a dízima do JavaScript
+  const remaining = Math.round((total - totalPaid) * 100) / 100;
+
   const handleAddPayment = () => {
-    const amountValue = parseFloat(amount);
-    if (!amountValue || amountValue <= 0) return toast.error('Digite um valor válido');
+    // 🟢 Aceita caso o usuário digite com vírgula em vez de ponto
+    const amountStr = String(amount).replace(',', '.');
+    const amountValue = parseFloat(amountStr);
     
-    if (amountValue > remaining && paymentMethod !== 'dinheiro') {
+    if (isNaN(amountValue) || amountValue <= 0) return toast.error('Digite um valor válido');
+    
+    // 🟢 Validação blindada em centavos absolutos
+    const valorEmCentavos = Math.round(amountValue * 100);
+    const restanteEmCentavos = Math.round(remaining * 100);
+
+    if (valorEmCentavos > restanteEmCentavos && paymentMethod !== 'dinheiro') {
       return toast.error('Valor maior que o restante permitido apenas em Dinheiro (Cálculo de Troco).');
     }
 
@@ -83,7 +98,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
 
       if (remaining <= 0) {
         await fetch(`/api/comandas/${orderId}/fechar`, { method: 'PUT' });
-        toast.success('Pagamento realizado com sucesso');
+        toast.success('Pagamento e fechamento realizados com sucesso');
         
         if (onOrderClosed) {
           onOrderClosed(); 
@@ -91,19 +106,13 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
           onClose();
         }
       } else {
-        toast.success('Pagamento realizado com sucesso');
+        toast.success('Pagamento parcial realizado com sucesso');
         onClose(); 
       }
     } catch (error) {
       toast.error('Erro de conexão ao registrar pagamentos.');
     }
   };
-
-  const total = order ? (Number(order.valor_total) || 0) : 0;
-  const alreadyPaid = order ? (Number(order.totalPaid) || 0) : 0;
-  const paymentsMade = payments.reduce((sum, p) => sum + p.amount, 0);
-  const totalPaid = alreadyPaid + paymentsMade;
-  const remaining = total - totalPaid;
   
   const nomeCliente = order ? (order.Nick || order.nick || 'Sem nome') : '';
 
@@ -147,17 +156,17 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
                 <TextField
                   fullWidth
                   label="Valor (R$)"
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  inputProps={{ step: '0.01', min: '0.01' }}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
                   placeholder="0.00"
                   size="small"
                 />
                 <Button 
                   variant="outlined" 
                   disableElevation 
-                  onClick={() => setAmount(remaining.toFixed(2))} 
+                  onClick={() => setAmount(remaining > 0 ? remaining.toFixed(2) : '0.00')} 
                   sx={{ whiteSpace: 'nowrap', textTransform: 'none', fontWeight: 600 }}
                 >
                   Pagar Tudo
@@ -169,7 +178,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
                 variant="contained"
                 disableElevation
                 onClick={handleAddPayment}
-                disabled={!amount || parseFloat(amount) <= 0}
+                disabled={!amount || parseFloat(amount.replace(',', '.')) <= 0}
                 sx={{ py: 1.5, borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
               >
                 Adicionar à Lista de Pagamentos

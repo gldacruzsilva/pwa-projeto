@@ -31,7 +31,8 @@ app.get('/relatorios/produtos', async (req, res) => {
         res.status(500).json({ erro: 'Erro interno' });
     }
 });
-app.get('/produtos', async (req, res) => { // 🟢 Removido o /api
+
+app.get('/produtos', async (req, res) => {
     try {
         const [linhas] = await db.execute('SELECT codp, nome, preco_venda, preco_custo, qtde_estoque, lote FROM Produto');
         res.json(linhas);
@@ -40,6 +41,7 @@ app.get('/produtos', async (req, res) => { // 🟢 Removido o /api
         res.status(500).json({ mensagem: 'Erro interno ao buscar produtos.' });
     }
 });
+
 app.get('/relatorios/vendas', async (req, res) => {
     try {
         const [linhas] = await db.execute("SELECT codc, nick, valor_total, data_venda, status FROM Comanda ORDER BY data_venda DESC");
@@ -113,8 +115,8 @@ app.get('/auditoria/ativos', async (req, res) => {
     try {
         const sql = `
             SELECT 
-                si.codsi, si.qtde, si.data_hora AS data, si.descricao,
-                a.coda, a.nome AS produto_nome,
+                si.codsi AS codse, si.qtde, si.data_hora AS data, si.descricao,
+                a.coda AS codp, a.nome AS produto_nome,
                 u.codu, u.nome AS usuario_nome, u.tipo AS usuario_tipo
             FROM SaldoItem si
             LEFT JOIN Ativo a ON si.coda = a.coda
@@ -187,14 +189,11 @@ app.post('/produtos', async (req, res) => {
 app.put('/produtos/:id', async (req, res) => {
     try {
         const { id } = req.params; 
-        
-        // 🟢 Capturamos o lote_original que o front-end agora vai enviar
         const { nome, preco, preco_venda, qtde_estoque, preco_custo, lote, lote_original, descricao = 'Movimentação', codu = 1 } = req.body; 
 
-        // 🟢 Voltamos a usar o lote_original na busca (chave primária composta)
         const [produtoAtual] = await db.execute(
             'SELECT nome, preco_venda, qtde_estoque, preco_custo, lote FROM Produto WHERE codp = ? AND lote = ?', 
-            [id, lote_original ?? ''] // <-- Proteção caso venha nulo
+            [id, lote_original ?? ''] 
         );
         
         if (produtoAtual.length === 0) return res.status(404).json({ mensagem: 'Produto não encontrado no lote especificado.' });
@@ -223,7 +222,6 @@ app.put('/produtos/:id', async (req, res) => {
             registrarAuditoria = true;
         }
 
-        // 🟢 Voltamos a usar o lote_original no UPDATE
         const sql = 'UPDATE Produto SET nome = ?, preco_venda = ?, qtde_estoque = ?, preco_custo = ?, lote = ? WHERE codp = ? AND lote = ?';
         await db.execute(sql, [
             nomeFinal ?? null, 
@@ -278,12 +276,39 @@ app.get('/bens', async (req, res) => {
 
 app.put('/bens/:id', async (req, res) => {
     const coda = req.params.id;
-    const { nome, qtde, valor, descricao = 'EDIÇÃO: Atualização', codu = 1 } = req.body;
+    const { nome, qtde, valor, descricao, codu = 1 } = req.body;
     try {
-        const descSegura = descricao.substring(0, 38);
+        const [ativoAntigo] = await db.execute('SELECT nome, qtde, valor FROM Ativo WHERE coda = ?', [coda]);
+        if (ativoAntigo.length === 0) return res.status(404).json({ mensagem: 'Ativo não encontrado.' });
+
+        const p = ativoAntigo[0];
+        let textoAuditoria = descricao || 'Atualização';
+        let registrarAuditoria = false;
+
+        if (Number(qtde) === Number(p.qtde)) {
+            let alteracoes = [];
+            if (nome && nome !== p.nome) alteracoes.push(`${p.nome}->${nome}`);
+            if (valor !== undefined && Number(valor) !== Number(p.valor)) alteracoes.push(`R$${Number(p.valor).toFixed(2)}->R$${Number(valor).toFixed(2)}`);
+            
+            if (alteracoes.length > 0) {
+                textoAuditoria = `EDIT: ${alteracoes.join(' | ')}`;
+                registrarAuditoria = true; 
+            }
+        } else {
+            registrarAuditoria = true;
+        }
+
         await db.execute('UPDATE Ativo SET nome = ?, qtde = ?, valor = ? WHERE coda = ?', [nome, qtde, valor, coda]);
-        await db.execute('INSERT INTO SaldoItem (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', [qtde, codu, descSegura, coda]);
-        res.status(200).json({ mensagem: 'Movimentação registrada com sucesso!' });
+        
+        if (registrarAuditoria) {
+            const descSegura = textoAuditoria.substring(0, 95); 
+            await db.execute(
+                'INSERT INTO SaldoItem (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', 
+                [qtde, codu, descSegura, coda]
+            );
+        }
+
+        res.status(200).json({ mensagem: 'Ativo atualizado com sucesso!' });
     } catch (erro) { 
         console.error(`Erro no PUT /bens/${req.params.id}:`, erro);
         res.status(500).json({ mensagem: 'Erro interno ao editar ativo.', detalhe: erro.message }); 
@@ -291,22 +316,18 @@ app.put('/bens/:id', async (req, res) => {
 });
 
 app.post('/bens', async (req, res) => {
-    // Retiramos o 'coda' daqui. O frontend não precisa mais mandar.
     const { nome, qtde, valor, descricao = 'ENTRADA: Novo ativo', codu = 1 } = req.body;
     const descSegura = descricao.substring(0, 38);
 
     try {
-        // 1. Inserimos na tabela Ativo SEM o campo 'coda'
         const [resultado] = await db.execute(
             'INSERT INTO Ativo (qtde, valor, nome) VALUES (?, ?, ?)', 
             [qtde ?? null, valor ?? null, nome ?? null]
         );
         
-        // 2. Capturamos o ID (coda) gerado automaticamente pelo banco
         const novoCoda = resultado.insertId; 
         
         try {
-            // 3. Usamos o 'novoCoda' na tabela de auditoria
             await db.execute(
                 'INSERT INTO SaldoItem (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', 
                 [qtde ?? null, codu ?? null, descSegura ?? null, novoCoda]
@@ -314,11 +335,10 @@ app.post('/bens', async (req, res) => {
             
             res.status(201).json({ 
                 mensagem: 'Ativo cadastrado com sucesso!',
-                codigoGerado: novoCoda // É legal devolver o ID gerado para o frontend
+                codigoGerado: novoCoda 
             });
         } catch (erroAuditoria) {
             try {
-                // O Rollback agora usa o 'novoCoda'
                 await db.execute('DELETE FROM Ativo WHERE coda = ?', [novoCoda]);
             } catch (erroRollback) {
                 console.error('Falha crítica ao deletar o ativo:', erroRollback);
@@ -330,9 +350,11 @@ app.post('/bens', async (req, res) => {
         res.status(500).json({ mensagem: 'Erro ao cadastrar o ativo.', detalhe: erroAtivo.message });
     }
 });
+
 app.delete('/bens/:id', async (req, res) => {
     try {
         const { id } = req.params; 
+        await db.execute('DELETE FROM SaldoItem WHERE coda = ?', [id]); 
         const [resultado] = await db.execute('DELETE FROM Ativo WHERE coda = ?', [id]);
         if (resultado.affectedRows === 0) return res.status(404).json({ mensagem: 'Ativo não encontrado.' });
         res.status(200).json({ mensagem: 'Ativo deletado!' });
@@ -408,9 +430,9 @@ app.get('/comandas/:id', async (req, res) => {
         if (venda.length === 0) return res.status(404).json({ mensagem: 'Não encontrada' });
 
         const [itens] = await db.execute(`
-            SELECT iv.codp, p.nome, SUM(iv.qtde) AS qtde, iv.preco_vendido AS valor_unit
+            SELECT iv.codp, p.nome, SUM(iv.qtde) AS qtde, iv.preco_vendido AS valor_unit, iv.lote
             FROM ItemVenda iv JOIN Produto p ON iv.codp = p.codp AND iv.lote = p.lote
-            WHERE iv.codc = ? GROUP BY iv.codp, p.nome, iv.preco_vendido
+            WHERE iv.codc = ? GROUP BY iv.codp, p.nome, iv.preco_vendido, iv.lote
         `, [id]);
 
         const [pagamentos] = await db.execute('SELECT SUM(valor) as total_pago FROM Pagamento WHERE codc = ?', [id]);
@@ -421,42 +443,33 @@ app.get('/comandas/:id', async (req, res) => {
     }
 });
 
-// 🟢 INTELIGÊNCIA NOVA: ADD ITEM COM USUÁRIO CORRETO (codu)
+// 🟢 INTELIGÊNCIA NOVA: ADD ITEM COM LOTE ESPECÍFICO
 app.post('/comandas/:id/itens', async (req, res) => {
     try {
         const { id } = req.params;
-        const { codp, qtde, codu = 2 } = req.body; // Pega o usuário ou assume ID 2 (funcionário) por segurança
+        const { codp, qtde, lote, codu = 2 } = req.body;
 
-        const [lotes] = await db.execute('SELECT lote, COALESCE(preco_venda, 0) as preco_venda, COALESCE(qtde_estoque, 0) as qtde_estoque FROM Produto WHERE codp = ? ORDER BY lote ASC', [codp]);
+        const loteFinal = lote || '1';
+
+        const [lotes] = await db.execute('SELECT lote, COALESCE(preco_venda, 0) as preco_venda, COALESCE(qtde_estoque, 0) as qtde_estoque FROM Produto WHERE codp = ? AND lote = ?', [codp, loteFinal]);
         
-        if (lotes.length === 0) return res.status(400).json({ mensagem: 'Produto não encontrado' });
-        
-        const lotesComEstoque = lotes.filter(l => l.qtde_estoque > 0);
-        const estoqueTotal = lotesComEstoque.reduce((acc, l) => acc + l.qtde_estoque, 0);
+        if (lotes.length === 0) return res.status(400).json({ mensagem: 'Produto/Lote não encontrado' });
+        const loteAtual = lotes[0];
 
-        if (estoqueTotal < qtde) return res.status(400).json({ mensagem: `Estoque insuficiente. Disp: ${estoqueTotal}` });
+        if (loteAtual.qtde_estoque < qtde) return res.status(400).json({ mensagem: `Estoque insuficiente. Disp: ${loteAtual.qtde_estoque}` });
 
-        let qtdeRestante = qtde;
-        for (let loteAtual of lotesComEstoque) {
-            if (qtdeRestante <= 0) break;
-            const qtdeAAbater = Math.min(qtdeRestante, loteAtual.qtde_estoque);
-
-            const [itemExistente] = await db.execute('SELECT qtde FROM ItemVenda WHERE codc = ? AND codp = ? AND lote = ?', [id, codp, loteAtual.lote]);
-            if (itemExistente.length > 0) {
-                await db.execute('UPDATE ItemVenda SET qtde = qtde + ? WHERE codc = ? AND codp = ? AND lote = ?', [qtdeAAbater, id, codp, loteAtual.lote]);
-            } else {
-                await db.execute('INSERT INTO ItemVenda (codc, codp, lote, qtde, preco_vendido) VALUES (?, ?, ?, ?, ?)', [id, codp, loteAtual.lote, qtdeAAbater, loteAtual.preco_venda || 0]);
-            }
-
-            const novoEstoque = loteAtual.qtde_estoque - qtdeAAbater;
-            await db.execute('UPDATE Produto SET qtde_estoque = ? WHERE codp = ? AND lote = ?', [novoEstoque, codp, loteAtual.lote]);
-            
-            // 🟢 Inserindo a auditoria com a variável 'codu'
-            await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
-                [novoEstoque, codp, codu, `SAÍDA: Comanda #${id}`, loteAtual.lote]);
-
-            qtdeRestante -= qtdeAAbater;
+        const [itemExistente] = await db.execute('SELECT qtde FROM ItemVenda WHERE codc = ? AND codp = ? AND lote = ?', [id, codp, loteFinal]);
+        if (itemExistente.length > 0) {
+            await db.execute('UPDATE ItemVenda SET qtde = qtde + ? WHERE codc = ? AND codp = ? AND lote = ?', [qtde, id, codp, loteFinal]);
+        } else {
+            await db.execute('INSERT INTO ItemVenda (codc, codp, lote, qtde, preco_vendido) VALUES (?, ?, ?, ?, ?)', [id, codp, loteFinal, qtde, loteAtual.preco_venda]);
         }
+
+        const novoEstoque = loteAtual.qtde_estoque - qtde;
+        await db.execute('UPDATE Produto SET qtde_estoque = ? WHERE codp = ? AND lote = ?', [novoEstoque, codp, loteFinal]);
+        
+        await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
+            [novoEstoque, codp, codu, `SAÍDA: Comanda #${id}`, loteFinal]);
 
         await atualizarTotalComanda(id);
         res.status(200).json({ mensagem: 'Adicionado com sucesso!' });
@@ -466,60 +479,40 @@ app.post('/comandas/:id/itens', async (req, res) => {
     }
 });
 
-// 🟢 INTELIGÊNCIA NOVA: ALTERAR QUANTIDADE ITEM COM USUÁRIO CORRETO (codu)
+// 🟢 INTELIGÊNCIA NOVA: ALTERAR QUANTIDADE DE UM LOTE ESPECÍFICO
 app.put('/comandas/:id/itens/:codp', async (req, res) => {
     try {
         const { id, codp } = req.params;
-        const { qtde, codu = 2 } = req.body; // Pega o usuário
+        const { qtde, lote, codu = 2 } = req.body; 
 
-        const [itensAtuais] = await db.execute('SELECT lote, qtde FROM ItemVenda WHERE codc = ? AND codp = ?', [id, codp]);
+        if (!lote) return res.status(400).json({ mensagem: 'Lote não informado.' });
+
+        const [itensAtuais] = await db.execute('SELECT qtde FROM ItemVenda WHERE codc = ? AND codp = ? AND lote = ?', [id, codp, lote]);
         if (itensAtuais.length === 0) return res.status(404).json({ mensagem: 'Item não encontrado.' });
 
-        for (let iv of itensAtuais) {
-            const [prod] = await db.execute('SELECT qtde_estoque FROM Produto WHERE codp = ? AND lote = ?', [codp, iv.lote]);
-            const novoEst = prod[0].qtde_estoque + iv.qtde;
-            await db.execute('UPDATE Produto SET qtde_estoque = ? WHERE codp = ? AND lote = ?', [novoEst, codp, iv.lote]);
-            
-            // 🟢 Inserindo a auditoria com a variável 'codu'
-            await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
-                [novoEst, codp, codu, `ENTRADA: Reajuste Comanda #${id}`, iv.lote]);
+        const qtdeAnterior = itensAtuais[0].qtde;
+        const diferenca = qtde - qtdeAnterior;
+
+        if (diferenca === 0) return res.status(200).json({ mensagem: 'Sem alteração.' });
+
+        const [prod] = await db.execute('SELECT qtde_estoque FROM Produto WHERE codp = ? AND lote = ?', [codp, lote]);
+        const estoqueAtual = prod[0].qtde_estoque;
+
+        if (diferenca > 0 && estoqueAtual < diferenca) {
+            return res.status(400).json({ mensagem: `Estoque insuficiente. Disp: ${estoqueAtual}` });
         }
-        await db.execute('DELETE FROM ItemVenda WHERE codc = ? AND codp = ?', [id, codp]);
+
+        const novoEstoque = estoqueAtual - diferenca;
+        await db.execute('UPDATE Produto SET qtde_estoque = ? WHERE codp = ? AND lote = ?', [novoEstoque, codp, lote]);
+        
+        const tipoAuditoria = diferenca > 0 ? 'SAÍDA' : 'ENTRADA';
+        await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
+            [novoEstoque, codp, codu, `${tipoAuditoria}: Ajuste Comanda #${id}`, lote]);
 
         if (qtde === 0) {
-            await atualizarTotalComanda(id);
-            return res.status(200).json({ mensagem: 'Removido!' });
-        }
-
-        const [lotes] = await db.execute('SELECT lote, COALESCE(preco_venda, 0) as preco_venda, COALESCE(qtde_estoque, 0) as qtde_estoque FROM Produto WHERE codp = ? ORDER BY lote ASC', [codp]);
-        const lotesComEstoque = lotes.filter(l => l.qtde_estoque > 0);
-        const estoqueTotal = lotesComEstoque.reduce((acc, l) => acc + l.qtde_estoque, 0);
-
-        if (estoqueTotal < qtde) {
-            for (let iv of itensAtuais) {
-                const loteDado = lotes.find(l => l.lote === iv.lote);
-                const precoVenda = loteDado ? loteDado.preco_venda : 0;
-                await db.execute('INSERT INTO ItemVenda (codc, codp, qtde, preco_vendido, lote) VALUES (?, ?, ?, ?, ?)', [id, codp, iv.qtde, precoVenda, iv.lote]);
-                const [prod] = await db.execute('SELECT qtde_estoque FROM Produto WHERE codp = ? AND lote = ?', [codp, iv.lote]);
-                const voltaEst = prod[0].qtde_estoque - iv.qtde;
-                await db.execute('UPDATE Produto SET qtde_estoque = ? WHERE codp = ? AND lote = ?', [voltaEst, codp, iv.lote]);
-            }
-            return res.status(400).json({ mensagem: `Estoque insuficiente. Disp: ${estoqueTotal}` });
-        }
-
-        let qtdeRestante = qtde;
-        for (let loteAtual of lotesComEstoque) {
-            if (qtdeRestante <= 0) break;
-            const qtdeAAbater = Math.min(qtdeRestante, loteAtual.qtde_estoque);
-            await db.execute('INSERT INTO ItemVenda (codc, codp, lote, qtde, preco_vendido) VALUES (?, ?, ?, ?, ?)', [id, codp, loteAtual.lote, qtdeAAbater, loteAtual.preco_venda || 0]);
-            
-            const novoEst = loteAtual.qtde_estoque - qtdeAAbater;
-            await db.execute('UPDATE Produto SET qtde_estoque = ? WHERE codp = ? AND lote = ?', [novoEst, codp, loteAtual.lote]);
-            
-            // 🟢 Inserindo a auditoria com a variável 'codu'
-            await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
-                [novoEst, codp, codu, `SAÍDA: Ajustada Comanda #${id}`, loteAtual.lote]);
-            qtdeRestante -= qtdeAAbater;
+            await db.execute('DELETE FROM ItemVenda WHERE codc = ? AND codp = ? AND lote = ?', [id, codp, lote]);
+        } else {
+            await db.execute('UPDATE ItemVenda SET qtde = ? WHERE codc = ? AND codp = ? AND lote = ?', [qtde, id, codp, lote]);
         }
 
         await atualizarTotalComanda(id);
@@ -530,25 +523,30 @@ app.put('/comandas/:id/itens/:codp', async (req, res) => {
     }
 });
 
-// 🟢 INTELIGÊNCIA NOVA: DELETAR ITEM INTEIRO COM USUÁRIO CORRETO (codu via query string)
+// 🟢 INTELIGÊNCIA NOVA: DELETAR LOTE ESPECÍFICO INTEIRO
 app.delete('/comandas/:id/itens/:codp', async (req, res) => {
     try {
         const { id, codp } = req.params;
-        const codu = req.query.codu || 2; // Pega da URL (?codu=...)
+        const lote = req.query.lote; 
+        const codu = req.query.codu || 2; 
 
-        const [itensVenda] = await db.execute('SELECT lote, qtde FROM ItemVenda WHERE codc = ? AND codp = ?', [id, codp]);
+        if (!lote) return res.status(400).json({ mensagem: 'Lote não especificado.' });
+
+        const [itensVenda] = await db.execute('SELECT qtde FROM ItemVenda WHERE codc = ? AND codp = ? AND lote = ?', [id, codp, lote]);
         if (itensVenda.length === 0) return res.status(404).json({ mensagem: 'Item não encontrado.' });
         
-        for (let iv of itensVenda) {
-            const [produto] = await db.execute('SELECT qtde_estoque FROM Produto WHERE codp = ? AND lote = ?', [codp, iv.lote]);
-            const novoEstoque = produto[0].qtde_estoque + iv.qtde;
-            await db.execute('UPDATE Produto SET qtde_estoque = ? WHERE codp = ? AND lote = ?', [novoEstoque, codp, iv.lote]);
-            
-            // 🟢 Inserindo a auditoria com a variável 'codu'
-            await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
-                [novoEstoque, codp, codu, `ENTRADA: Devolução da Comanda #${id}`, iv.lote]);
-        }
-        await db.execute('DELETE FROM ItemVenda WHERE codc = ? AND codp = ?', [id, codp]);
+        const qtdeDevolver = itensVenda[0].qtde;
+
+        const [produto] = await db.execute('SELECT qtde_estoque FROM Produto WHERE codp = ? AND lote = ?', [codp, lote]);
+        const novoEstoque = produto[0].qtde_estoque + qtdeDevolver;
+        
+        await db.execute('UPDATE Produto SET qtde_estoque = ? WHERE codp = ? AND lote = ?', [novoEstoque, codp, lote]);
+        
+        await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
+            [novoEstoque, codp, codu, `ENTRADA: Devolução da Comanda #${id}`, lote]);
+        
+        await db.execute('DELETE FROM ItemVenda WHERE codc = ? AND codp = ? AND lote = ?', [id, codp, lote]);
+        
         await atualizarTotalComanda(id);
         res.status(200).json({ mensagem: 'Item removido!' });
     } catch (erro) { 
