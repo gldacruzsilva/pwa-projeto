@@ -32,15 +32,6 @@ app.get('/relatorios/produtos', async (req, res) => {
     }
 });
 
-app.get('/produtos', async (req, res) => {
-    try {
-        const [linhas] = await db.execute('SELECT codp, nome, preco_venda, preco_custo, qtde_estoque, lote FROM Produto');
-        res.json(linhas);
-    } catch (erro) {
-        console.error('Erro ao buscar produtos:', erro);
-        res.status(500).json({ mensagem: 'Erro interno ao buscar produtos.' });
-    }
-});
 
 app.get('/relatorios/vendas', async (req, res) => {
     try {
@@ -160,113 +151,79 @@ app.delete('/auditoria/estoque', async (req, res) => {
 /* ==========================================
    ROTAS DE ESTOQUE E PRODUTOS
    ========================================== */
-app.post('/produtos', async (req, res) => {
+// 1. Substitua a rota GET /produtos atual por esta (Filtra por status)
+app.get('/produtos', async (req, res) => {
     try {
-        let { codp, nome = '', preco_venda = 0, qtde_estoque = 0, preco_custo = 0, lote = '1', descricao = 'ENTRADA: Cadastro Inicial', codu = 1 } = req.body; 
+        const { status } = req.query;
+        let sql = 'SELECT codp, nome, preco_venda, preco_custo, qtde_estoque, lote, status FROM Produto';
+        let params = [];
         
-        if (!nome || nome.trim() === '') return res.status(400).json({ mensagem: 'Nome do produto é obrigatório.' });
-        
-        if (!codp) {
-            const [rows] = await db.execute('SELECT MAX(codp) as maxCod FROM Produto');
-            codp = (rows[0].maxCod || 0) + 1;
-        }
-
-        const sql = 'INSERT INTO Produto (codp, nome, preco_venda, qtde_estoque, preco_custo, lote) VALUES (?, ?, ?, ?, ?, ?)';
-        await db.execute(sql, [codp, nome.trim(), Number(preco_venda ?? 0), Number(qtde_estoque ?? 0), Number(preco_custo ?? 0), lote]);
-        
-        const descSegura = (descricao || 'ENTRADA: Cadastro Inicial').substring(0, 40);
-        await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
-            [Number(qtde_estoque ?? 0), codp, Number(codu ?? 1), descSegura, lote]);
-
-        res.status(201).json({ mensagem: 'Produto cadastrado com sucesso!', codp: codp });
-    } catch (erro) {
-        console.error('Erro no POST /produtos:', erro);
-        if (erro.code === 'ER_DUP_ENTRY') return res.status(400).json({ mensagem: 'Este lote já existe para este produto!' });
-        res.status(500).json({ mensagem: 'Erro interno.', detalhe: erro.message });
-    }
-});
-
-app.put('/produtos/:id', async (req, res) => {
-    try {
-        const { id } = req.params; 
-        const { nome, preco, preco_venda, qtde_estoque, preco_custo, lote, lote_original, descricao = 'Movimentação', codu = 1 } = req.body; 
-
-        const [produtoAtual] = await db.execute(
-            'SELECT nome, preco_venda, qtde_estoque, preco_custo, lote FROM Produto WHERE codp = ? AND lote = ?', 
-            [id, lote_original ?? ''] 
-        );
-        
-        if (produtoAtual.length === 0) return res.status(404).json({ mensagem: 'Produto não encontrado no lote especificado.' });
-        
-        const p = produtoAtual[0];
-        
-        const nomeFinal = nome !== undefined ? nome : p.nome;
-        const qtdeFinal = qtde_estoque !== undefined ? qtde_estoque : p.qtde_estoque;
-        const custoFinal = preco_custo !== undefined ? preco_custo : p.preco_custo;
-        const loteFinal = lote !== undefined ? lote : p.lote;
-        const precoFinal = preco !== undefined ? preco : (preco_venda !== undefined ? preco_venda : p.preco_venda);
-
-        let textoAuditoria = descricao;
-        let registrarAuditoria = false;
-
-        if (qtdeFinal === p.qtde_estoque) {
-            let alteracoes = [];
-            if (nomeFinal !== p.nome) alteracoes.push(`${p.nome}->${nomeFinal}`);
-            if (Number(precoFinal) !== Number(p.preco_venda)) alteracoes.push(`R$${p.preco_venda}->${precoFinal}`);
-            
-            if (alteracoes.length > 0) {
-                textoAuditoria = `EDIT: ${alteracoes.join(' | ')}`;
-                registrarAuditoria = true; 
-            }
+        // Se a query vier com ?status=0 (Lixeira), traz os inativos. 
+        // Caso contrário, traz os ativos (status = 1) por padrão.
+        if (status !== undefined && status !== 'all') {
+            sql += ' WHERE status = ?';
+            params.push(Number(status));
         } else {
-            registrarAuditoria = true;
+            sql += ' WHERE status = 1';
         }
-
-        const sql = 'UPDATE Produto SET nome = ?, preco_venda = ?, qtde_estoque = ?, preco_custo = ?, lote = ? WHERE codp = ? AND lote = ?';
-        await db.execute(sql, [
-            nomeFinal ?? null, 
-            precoFinal ?? null, 
-            qtdeFinal ?? null, 
-            custoFinal ?? null, 
-            loteFinal ?? null, 
-            id, 
-            lote_original ?? ''
-        ]);
         
-        if (registrarAuditoria) {
-            const descSegura = textoAuditoria.substring(0, 40);
-            await db.execute(
-                `INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)`, 
-                [qtdeFinal ?? null, id, codu ?? null, descSegura ?? null, loteFinal ?? null]
-            ); 
-        }
-
-        res.status(200).json({ mensagem: 'Produto atualizado!', id_atualizado: id });
-    } catch (erro) { 
-        console.error(`Erro no PUT /produtos/${req.params.id}:`, erro);
-        res.status(500).json({ mensagem: 'Erro interno.' }); 
+        const [linhas] = await db.execute(sql, params);
+        res.json(linhas);
+    } catch (erro) {
+        console.error('Erro ao buscar produtos:', erro);
+        res.status(500).json({ mensagem: 'Erro interno ao buscar produtos.' });
     }
 });
 
+// 2. Substitua o DELETE /produtos/:id por este (Soft Delete)
 app.delete('/produtos/:id', async (req, res) => {
     try {
         const { id } = req.params; 
         const { lote } = req.query;
-        const [resultado] = await db.execute('DELETE FROM Produto WHERE codp = ? AND lote = ?', [id, lote]);
+        // EXCLUSÃO LÓGICA: Em vez de apagar a linha, mudamos o status para 0
+        const [resultado] = await db.execute('UPDATE Produto SET status = 0 WHERE codp = ? AND lote = ?', [id, lote]);
+        
         if (resultado.affectedRows === 0) return res.status(404).json({ mensagem: 'Produto não encontrado.' });
-        res.status(200).json({ mensagem: 'Produto deletado!' });
+        res.status(200).json({ mensagem: 'Produto movido para a lixeira (inativado)!' });
     } catch (erro) { 
         console.error(`Erro no DELETE /produtos/${req.params.id}:`, erro);
         res.status(500).json({ mensagem: 'Erro interno.' }); 
     }
 });
 
+// 3. ADICIONE ESTA NOVA ROTA para reativar o produto
+app.put('/produtos/:id/reativar', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { lote } = req.body;
+        // REATIVAÇÃO: Volta o status para 1
+        const [resultado] = await db.execute('UPDATE Produto SET status = 1 WHERE codp = ? AND lote = ?', [id, lote]);
+        
+        if (resultado.affectedRows === 0) return res.status(404).json({ mensagem: 'Produto não encontrado.' });
+        res.status(200).json({ mensagem: 'Produto reativado com sucesso!' });
+    } catch (erro) { 
+        console.error(`Erro no PUT reativar /produtos/${req.params.id}:`, erro);
+        res.status(500).json({ mensagem: 'Erro interno.' }); 
+    }
+});
 /* ==========================================
    ROTAS DE ATIVOS
    ========================================== */
 app.get('/bens', async (req, res) => {
     try {
-        const [linhas] = await db.execute('SELECT * FROM Ativo'); 
+        const { status } = req.query;
+        let sql = 'SELECT * FROM Ativo';
+        let params = [];
+
+        // Se passar ?status=0 traz a lixeira, senão traz os ativos (status = 1 ou nulo caso BD não esteja atualizado)
+        if (status !== undefined && status !== 'all') {
+            sql += ' WHERE status = ?';
+            params.push(Number(status));
+        } else {
+            sql += ' WHERE status = 1 OR status IS NULL';
+        }
+
+        const [linhas] = await db.execute(sql, params); 
         res.status(200).json(linhas);
     } catch (erro) { 
         console.error('Erro no GET /bens:', erro);
@@ -275,6 +232,7 @@ app.get('/bens', async (req, res) => {
 });
 
 app.put('/bens/:id', async (req, res) => {
+    // ... MANTER O SEU PUT /bens/:id EXATAMENTE COMO VOCÊ MANDOU, NÃO MUDA NADA AQUI ...
     const coda = req.params.id;
     const { nome, qtde, valor, descricao, codu = 1 } = req.body;
     try {
@@ -289,7 +247,7 @@ app.put('/bens/:id', async (req, res) => {
             let alteracoes = [];
             if (nome && nome !== p.nome) alteracoes.push(`${p.nome}->${nome}`);
             if (valor !== undefined && Number(valor) !== Number(p.valor)) alteracoes.push(`R$${Number(p.valor).toFixed(2)}->R$${Number(valor).toFixed(2)}`);
-            
+
             if (alteracoes.length > 0) {
                 textoAuditoria = `EDIT: ${alteracoes.join(' | ')}`;
                 registrarAuditoria = true; 
@@ -299,7 +257,7 @@ app.put('/bens/:id', async (req, res) => {
         }
 
         await db.execute('UPDATE Ativo SET nome = ?, qtde = ?, valor = ? WHERE coda = ?', [nome, qtde, valor, coda]);
-        
+
         if (registrarAuditoria) {
             const descSegura = textoAuditoria.substring(0, 95); 
             await db.execute(
@@ -320,25 +278,27 @@ app.post('/bens', async (req, res) => {
     const descSegura = descricao.substring(0, 38);
 
     try {
+        // MUDANÇA: Adicionado status = 1 no momento da criação
         const [resultado] = await db.execute(
-            'INSERT INTO Ativo (qtde, valor, nome) VALUES (?, ?, ?)', 
+            'INSERT INTO Ativo (qtde, valor, nome, status) VALUES (?, ?, ?, 1)', 
             [qtde ?? null, valor ?? null, nome ?? null]
         );
-        
+
         const novoCoda = resultado.insertId; 
-        
+
         try {
             await db.execute(
                 'INSERT INTO SaldoItem (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', 
                 [qtde ?? null, codu ?? null, descSegura ?? null, novoCoda]
             );
-            
+
             res.status(201).json({ 
                 mensagem: 'Ativo cadastrado com sucesso!',
                 codigoGerado: novoCoda 
             });
         } catch (erroAuditoria) {
             try {
+                // Se a auditoria falhar, exclui direto (rollback real)
                 await db.execute('DELETE FROM Ativo WHERE coda = ?', [novoCoda]);
             } catch (erroRollback) {
                 console.error('Falha crítica ao deletar o ativo:', erroRollback);
@@ -351,19 +311,31 @@ app.post('/bens', async (req, res) => {
     }
 });
 
+// MUDANÇA: Soft Delete ao invés de Delete total
 app.delete('/bens/:id', async (req, res) => {
     try {
         const { id } = req.params; 
-        await db.execute('DELETE FROM SaldoItem WHERE coda = ?', [id]); 
-        const [resultado] = await db.execute('DELETE FROM Ativo WHERE coda = ?', [id]);
+        const [resultado] = await db.execute('UPDATE Ativo SET status = 0 WHERE coda = ?', [id]);
         if (resultado.affectedRows === 0) return res.status(404).json({ mensagem: 'Ativo não encontrado.' });
-        res.status(200).json({ mensagem: 'Ativo deletado!' });
+        res.status(200).json({ mensagem: 'Ativo movido para a lixeira!' });
     } catch (erro) { 
         console.error(`Erro no DELETE /bens/${req.params.id}:`, erro);
-        res.status(500).json({ mensagem: 'Erro interno ao deletar.', detalhe: erro.message }); 
+        res.status(500).json({ mensagem: 'Erro interno ao inativar.', detalhe: erro.message }); 
     }
 });
 
+// NOVA ROTA: Reativar Ativo da Lixeira
+app.put('/bens/:id/reativar', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [resultado] = await db.execute('UPDATE Ativo SET status = 1 WHERE coda = ?', [id]);
+        if (resultado.affectedRows === 0) return res.status(404).json({ mensagem: 'Ativo não encontrado.' });
+        res.status(200).json({ mensagem: 'Ativo restaurado com sucesso!' });
+    } catch (erro) { 
+        console.error(`Erro no PUT /bens/${req.params.id}/reativar:`, erro);
+        res.status(500).json({ mensagem: 'Erro interno ao reativar.' }); 
+    }
+});
 /* ==========================================
    ROTAS DE COMANDAS E ITENS
    ========================================== */

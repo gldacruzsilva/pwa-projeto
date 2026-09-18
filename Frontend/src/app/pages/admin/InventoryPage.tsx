@@ -3,9 +3,9 @@ import {
   Paper, Typography, Button, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, TableFooter, Dialog, 
   DialogTitle, DialogContent, DialogActions, TextField, 
-  IconButton, Box, Card, CardContent, Divider, useMediaQuery, useTheme 
+  IconButton, Box, Card, CardContent, Divider, useMediaQuery, useTheme, Alert 
 } from '@mui/material';
-import { Edit, Delete } from '@mui/icons-material';
+import { Edit, Delete, RestoreFromTrash, Info } from '@mui/icons-material';
 import { toast } from 'sonner';
 
 interface Product {
@@ -25,6 +25,9 @@ const formatarMoedaBrasileira = (valor: number): string => {
   }).format(valor);
 };
 
+// 🟢 Constante para base URL do backend
+const API_URL = 'http://localhost:3000';
+
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
@@ -33,28 +36,59 @@ export default function InventoryPage() {
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({ code: '', name: '', quantity: '', price: '', costPrice: '', batch: '' });
 
-  // 🟢 Hooks para detectar se é celular
+  const [openTrashDialog, setOpenTrashDialog] = useState(false);
+  const [trashProducts, setTrashProducts] = useState<Product[]>([]);
+
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // Retorna true em telas pequenas (celular)
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); 
 
   const usuarioString = localStorage.getItem('usuarioAtivo');
   const usuarioLogado = usuarioString ? JSON.parse(usuarioString) : { codu: 1 };
 
+  // 🟢 Chamada com API_URL
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/produtos');
+      const response = await fetch(`${API_URL}/produtos?status=1`);
       if (response.ok) {
         const dados = await response.json();
-        const produtosFormatados = dados.map((item: any) => ({
+        const produtosAtivos = dados.filter((item: any) => item.status === 1 || item.status === undefined);
+        
+        const produtosFormatados = produtosAtivos.map((item: any) => ({
           id: item.codp, code: item.codp.toString(), name: item.nome, quantity: item.qtde_estoque,
           price: Number(item.preco_venda ?? 0), costPrice: Number(item.preco_custo ?? 0), batch: item.lote || '1',
         }));
         setProducts(produtosFormatados);
+      } else {
+        toast.error('Erro na resposta do servidor.');
       }
-    } catch (erro) { toast.error('Erro ao conectar com o banco de dados.'); }
+    } catch (erro) { 
+        toast.error('Erro ao conectar com o banco de dados. Verifique se o backend está rodando.'); 
+        console.error("Erro fetchProducts:", erro);
+    }
+  };
+
+  // 🟢 Chamada com API_URL
+  const fetchTrashProducts = async () => {
+    try {
+      const response = await fetch(`${API_URL}/produtos?status=0`);
+      if (response.ok) {
+        const dados = await response.json();
+        const produtosInativos = dados.filter((item: any) => item.status === 0);
+        
+        const produtosFormatados = produtosInativos.map((item: any) => ({
+          id: item.codp, code: item.codp.toString(), name: item.nome, quantity: item.qtde_estoque,
+          price: Number(item.preco_venda ?? 0), costPrice: Number(item.preco_custo ?? 0), batch: item.lote || '1',
+        }));
+        setTrashProducts(produtosFormatados);
+      }
+    } catch (erro) { toast.error('Erro ao carregar a lixeira.'); }
   };
 
   useEffect(() => { fetchProducts(); }, []);
+
+  useEffect(() => {
+    if (openTrashDialog) fetchTrashProducts();
+  }, [openTrashDialog]);
 
   const handleOpenDialog = (product: Product) => {
     setEditingProduct(product);
@@ -71,7 +105,8 @@ export default function InventoryPage() {
     if (!formData.name.trim() || !formData.price.trim()) return toast.error('Preencha os campos obrigatórios');
     try {
       if (editingProduct) {
-        const response = await fetch(`/api/produtos/${editingProduct.id}`, {
+        // 🟢 Chamada com API_URL
+        const response = await fetch(`${API_URL}/produtos/${editingProduct.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -106,15 +141,34 @@ export default function InventoryPage() {
   const handleDelete = async () => {
     if (!deletingProduct) return;
     try {
-      const response = await fetch(`/api/produtos/${deletingProduct.id}?lote=${encodeURIComponent(deletingProduct.batch)}`, {
+      // 🟢 Chamada com API_URL
+      const response = await fetch(`${API_URL}/produtos/${deletingProduct.id}?lote=${encodeURIComponent(deletingProduct.batch)}`, {
         method: 'DELETE',
       });
       if (response.ok) {
-        toast.success('Produto excluído com sucesso');
+        toast.success('Produto inativado com sucesso.');
         fetchProducts();
-      } else { toast.error('Erro ao excluir produto.'); }
+      } else { toast.error('Erro ao inativar produto.'); }
     } catch (erro) { toast.error('Erro de conexão.'); }
     handleCloseDeleteDialog();
+  };
+
+  const handleRestore = async (product: Product) => {
+    try {
+      // 🟢 Chamada com API_URL
+      const response = await fetch(`${API_URL}/produtos/${product.id}/reativar`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lote: product.batch })
+      });
+      if (response.ok) {
+        toast.success('Produto restaurado com sucesso!');
+        fetchTrashProducts();
+        fetchProducts();      
+      } else {
+        toast.error('Erro ao restaurar o produto.');
+      }
+    } catch (erro) { toast.error('Erro de conexão.'); }
   };
 
   const totalItems = products.reduce((acc, product) => acc + product.quantity, 0);
@@ -122,9 +176,18 @@ export default function InventoryPage() {
 
   return (
     <Box>
-      <Box className="mb-6"></Box>
+      {/* 🟢 Espaçamento (mb={4}) e Borda adicionada (variant="outlined") */}
+      <Box mb={4} display="flex" justifyContent="flex-start">
+        <Button 
+          variant="outlined" 
+          color="primary" 
+          startIcon={<RestoreFromTrash />} 
+          onClick={() => setOpenTrashDialog(true)}
+        >
+          Produtos inativos
+        </Button>
+      </Box>
       
-      {/* 🟢 RENDERIZAÇÃO CONDICIONAL: CARDS NO CELULAR, TABELA NO PC */}
       {isMobile ? (
         <Box display="flex" flexDirection="column" gap={2}>
           {products.map((product) => (
@@ -171,7 +234,6 @@ export default function InventoryPage() {
             </Card>
           ))}
           
-          {/* Card de Totais (Mobile) */}
           {products.length > 0 && (
             <Card sx={{ backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#272727' : '#f5f5f5', mt: 2 }}>
               <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, '&:last-child': { pb: 2 } }}>
@@ -188,7 +250,6 @@ export default function InventoryPage() {
           )}
         </Box>
       ) : (
-        // 🟢 TABELA ORIGINAL (mantida para Desktop)
         <TableContainer component={Paper}>
           <Table>
             <TableHead>
@@ -228,7 +289,6 @@ export default function InventoryPage() {
         </TableContainer>
       )}
 
-      {/* 🟢 AJUSTE DE PWA: No celular o dialog de edição ocupa a tela toda (fullScreen={isMobile}) */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Editar Produto</DialogTitle>
         <DialogContent dividers>
@@ -252,10 +312,72 @@ export default function InventoryPage() {
       <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Confirmar Exclusão</DialogTitle>
         <DialogContent>
-          {deletingProduct && <Typography className="mt-2">Tem certeza que deseja excluir permanentemente o produto <strong>{deletingProduct.name} Lote {deletingProduct.batch}</strong>?</Typography>}
+          {deletingProduct && (
+            <Box mt={1}>
+              <Typography>
+                Tem certeza que deseja inativar o produto <strong>{deletingProduct.name} Lote {deletingProduct.batch}</strong>?
+              </Typography>
+              
+              <Alert icon={<Info fontSize="inherit" />} severity="info" sx={{ mt: 2 }}>
+                Ele será movido para a lixeira e deixará de aparecer no sistema. Você poderá restaurá-lo mais tarde.
+              </Alert>
+            </Box>
+          )}
         </DialogContent>
-        <DialogActions><Button onClick={handleCloseDeleteDialog}>Cancelar</Button><Button onClick={handleDelete} variant="contained" color="error">Excluir</Button></DialogActions>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>Cancelar</Button>
+          <Button onClick={handleDelete} variant="contained" color="error">Excluir</Button>
+        </DialogActions>
       </Dialog>
+
+      <Dialog open={openTrashDialog} onClose={() => setOpenTrashDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <RestoreFromTrash color="action" /> Produtos inativos
+        </DialogTitle>
+        <DialogContent dividers>
+          {trashProducts.length === 0 ? (
+            <Alert severity="success">Nenhum produto inativo no momento.</Alert>
+          ) : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Código</TableCell>
+                    <TableCell>Nome</TableCell>
+                    <TableCell>Lote</TableCell>
+                    <TableCell>Estoque Retido</TableCell>
+                    <TableCell align="center">Ação</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {trashProducts.map((p, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{p.code}</TableCell>
+                      <TableCell>{p.name}</TableCell>
+                      <TableCell>{p.batch}</TableCell>
+                      <TableCell>{p.quantity}</TableCell>
+                      <TableCell align="center">
+                        <Button 
+                          variant="outlined" 
+                          color="success" 
+                          size="small"
+                          onClick={() => handleRestore(p)}
+                        >
+                          Restaurar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenTrashDialog(false)}>Fechar Lixeira</Button>
+        </DialogActions>
+      </Dialog>
+
     </Box>
   );
 }

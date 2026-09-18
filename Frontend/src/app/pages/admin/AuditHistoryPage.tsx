@@ -142,7 +142,7 @@ export default function AuditHistoryPage() {
   return (
     <Box>
       <Box display="flex" justifyContent="flex-end" mb={2}>
-        <Button variant="outlined" color="error" onClick={handleClearHistory} startIcon={<Delete />}>Limpar Histórico</Button>
+        <Button variant="outlined" color="primary" onClick={handleClearHistory} startIcon={<Delete />}>Limpar Histórico</Button>
       </Box>
 
       <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4, borderRadius: 2 }}>

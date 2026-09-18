@@ -27,7 +27,7 @@ export default function StockReceiptPage() {
 
   const buscarProdutos = async () => {
     try {
-      const resposta = await fetch('http://localhost:3000/produtos');
+      const resposta = await fetch('/api/produtos');
       if (resposta.ok) {
         const dados = await resposta.json();
         setProductList(Array.isArray(dados) ? dados : dados.produtos || []);
@@ -60,7 +60,7 @@ export default function StockReceiptPage() {
     if (Number(novoProduto.lote) < 0) return toast.error('O Lote não pode ser negativo.');
 
     try {
-      const resposta = await fetch('http://localhost:3000/produtos', {
+      const resposta = await fetch('/api/produtos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -185,7 +185,7 @@ export default function StockReceiptPage() {
         const novoEstoque = item.currentStock + (item.tipoMovimento === 'entrada' ? qtyNum : -qtyNum);
         
         if (criarNovoLote) {
-          return fetch('http://localhost:3000/produtos', {
+          return fetch('/api/produtos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -200,7 +200,7 @@ export default function StockReceiptPage() {
             })
           });
         } else {
-          return fetch(`http://localhost:3000/produtos/${item.productCode}`, {
+          return fetch(`api/produtos/${item.productCode}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
