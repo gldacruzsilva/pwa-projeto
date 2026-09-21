@@ -123,13 +123,13 @@ app.get('/auditoria/ativos', async (req, res) => {
     try {
         const sql = `
             SELECT 
-                si.codsi AS codse, si.qtde, si.data_hora AS data, si.descricao,
+                sa.codsa AS codse, sa.qtde, sa.data_hora AS data, sa.descricao,
                 a.coda AS codp, a.nome AS produto_nome,
                 u.codu, u.nome AS usuario_nome, u.tipo AS usuario_tipo
-            FROM SaldoItem si
-            LEFT JOIN Ativo a ON si.coda = a.coda
-            LEFT JOIN Usuario u ON si.codu = u.codu
-            ORDER BY si.data_hora DESC, si.codsi DESC
+            FROM SaldoAtivo sa
+            LEFT JOIN Ativo a ON sa.coda = a.coda
+            LEFT JOIN Usuario u ON sa.codu = u.codu
+            ORDER BY sa.data_hora DESC, sa.codsa DESC
         `;
         const [linhas] = await db.execute(sql);
         res.status(200).json(linhas);
@@ -143,7 +143,7 @@ app.delete('/auditoria/estoque/:tipo/:id', async (req, res) => {
     try {
         const { tipo, id } = req.params;
         if (tipo === 'ativo') {
-            await db.execute('DELETE FROM SaldoItem WHERE codsi = ?', [id]);
+            await db.execute('DELETE FROM SaldoAtivo WHERE codsa = ?', [id]);
         } else {
             await db.execute('DELETE FROM SaldoEstoque WHERE codse = ?', [id]);
         }
@@ -157,7 +157,7 @@ app.delete('/auditoria/estoque/:tipo/:id', async (req, res) => {
 app.delete('/auditoria/estoque', async (req, res) => {
     try {
         await db.execute('DELETE FROM SaldoEstoque');
-        await db.execute('DELETE FROM SaldoItem'); 
+        await db.execute('DELETE FROM SaldoAtivo'); 
         res.status(200).json({ mensagem: 'Histórico limpo com sucesso.' });
     } catch (erro) { 
         console.error('Erro ao limpar todo o histórico:', erro);
@@ -372,7 +372,7 @@ app.put('/bens/:id', async (req, res) => {
         if (registrarAuditoria) {
             const descSegura = textoAuditoria.substring(0, 95); 
             await db.execute(
-                'INSERT INTO SaldoItem (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', 
+                'INSERT INTO SaldoAtivo (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', 
                 [qtde, codu, descSegura, coda]
             );
         }
@@ -398,7 +398,7 @@ app.post('/bens', async (req, res) => {
 
         try {
             await db.execute(
-                'INSERT INTO SaldoItem (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', 
+                'INSERT INTO SaldoAtivo (data_hora, qtde, codu, descricao, coda) VALUES (NOW(), ?, ?, ?, ?)', 
                 [qtde ?? null, codu ?? null, descSegura ?? null, novoCoda]
             );
 
