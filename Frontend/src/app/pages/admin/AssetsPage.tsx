@@ -23,6 +23,8 @@ import {
   Divider,
   useTheme,
   useMediaQuery,
+  Autocomplete,
+  MenuItem
 } from '@mui/material';
 import { Edit, Delete, SwapHoriz, AddCircleOutline, RestoreFromTrash } from '@mui/icons-material';
 import { toast } from 'sonner';
@@ -121,9 +123,124 @@ export default function AssetsPage() {
     if (openTrashDialog) fetchTrashAssets();
   }, [openTrashDialog]);
 
-  const handleSaveMovimento = async () => { /* Seu código atual se mantém */ };
-  const handleSaveNovoAtivo = async () => { /* Seu código atual se mantém */ };
-  const handleSaveEdit = async () => { /* Seu código atual se mantém */ };
+  const handleSaveMovimento = async () => {
+    if (!isAdmin) {
+      toast.error('Acesso negado. Apenas administradores podem movimentar ativos.');
+      return;
+    }
+    if (!selectedAsset) {
+      toast.error('Selecione um ativo');
+      return;
+    }
+    const qtdeNum = parseInt(qtdMovimento);
+    if (isNaN(qtdeNum) || qtdeNum <= 0) {
+      toast.error('Informe uma quantidade válida');
+      return;
+    }
+
+    const alteracao = tipoMovimento === 'entrada' ? qtdeNum : -qtdeNum;
+    const novoEstoque = selectedAsset.quantity + alteracao;
+
+    if (novoEstoque < 0) {
+      toast.error('Quantidade insuficiente para registrar esta saída!');
+      return;
+    }
+
+    let textoMotivo = motivoMovimento.trim() || 'Ajuste';
+    if (textoMotivo.length > 20) {
+      textoMotivo = textoMotivo.substring(0, 20) + '...';
+    }
+
+    try {
+      const response = await fetch(`/api/bens/${selectedAsset.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: selectedAsset.name,
+          qtde: novoEstoque,
+          valor: selectedAsset.value,
+          descricao: `${tipoMovimento.toUpperCase()}: ${textoMotivo}`, 
+          codu: usuarioLogado?.codu || 1
+        })
+      });
+
+      if (response.ok) {
+        toast.success(`Movimentação de ${tipoMovimento} registrada com sucesso!`);
+        setOpenMovimentoDialog(false);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.detalhe) toast.error(`Erro MySQL: ${errorData.detalhe}`);
+        else toast.error(errorData.mensagem || 'Falha ao atualizar movimentação.');
+      }
+    } catch (erro) {
+      toast.error('Erro de conexão ao registrar movimentação.');
+    }
+  };
+
+  const handleSaveNovoAtivo = async () => {
+    if (!isAdmin) return toast.error('Acesso negado.');
+    if (!formData.name.trim() || !formData.quantity.trim() || !formData.value.trim()) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/bens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: formData.name,
+          qtde: parseInt(formData.quantity), 
+          valor: parseFloat(formData.value),
+          descricao: 'ENTRADA: Novo ativo', 
+          codu: usuarioLogado?.codu || 1,
+        })
+      });
+
+      if (response.ok) {
+        toast.success('Novo ativo cadastrado com sucesso!');
+        setOpenNovoDialog(false);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.detalhe) toast.error(`${errorData.detalhe}`);
+        else toast.error(errorData.mensagem || 'Falha ao cadastrar ativo no banco.');
+      }
+    } catch (erro) {
+      toast.error('Erro de rede ao tentar cadastrar ativo.');
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!isAdmin) return toast.error('Acesso negado.');
+    if (!editingAsset) return;
+    try {
+      const response = await fetch(`/api/bens/${editingAsset.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: formData.name,
+          qtde: editingAsset.quantity, 
+          valor: parseFloat(formData.value),
+          descricao: 'EDIÇÃO: Dados atualizados', 
+          codu: usuarioLogado?.codu || 1
+        })
+      });
+
+      if (response.ok) {
+        toast.success('Ativo atualizado com sucesso!');
+        setOpenEditDialog(false);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.detalhe) toast.error(`Erro MySQL: ${errorData.detalhe}`);
+        else toast.error(errorData.mensagem || 'Falha ao atualizar ativo.');
+      }
+    } catch (erro) {
+      toast.error('Erro de rede ao atualizar ativo.');
+    }
+  };
 
   const handleDelete = async () => {
     if (!isAdmin) return toast.error('Acesso negado.');
@@ -134,7 +251,7 @@ export default function AssetsPage() {
       if (response.ok) {
         toast.success('Ativo movido para a lixeira!');
         setOpenDeleteDialog(false);
-        fetchAssets(); // Atualiza a tela sem precisar recarregar o navegador
+        fetchAssets(); 
       } else {
         toast.error('Falha ao inativar o ativo.');
       }
@@ -208,7 +325,21 @@ export default function AssetsPage() {
                   </Box>
                   {isAdmin && (
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <IconButton size="small" color="error" onClick={() => { setDeletingAsset(asset); setOpenDeleteDialog(true); }}><Delete /></IconButton>
+                      {/* 🟢 BOTÃO DE EDITAR NO CELULAR DE VOLTA */}
+                      <IconButton 
+                        size="small" 
+                        color="primary" 
+                        onClick={() => {
+                          setEditingAsset(asset);
+                          setFormData({ code: asset.code, name: asset.name, quantity: String(asset.quantity), value: String(asset.value) });
+                          setOpenEditDialog(true);
+                        }}
+                      >
+                        <Edit />
+                      </IconButton>
+                      <IconButton size="small" color="error" onClick={() => { setDeletingAsset(asset); setOpenDeleteDialog(true); }}>
+                        <Delete />
+                      </IconButton>
                     </Box>
                   )}
                 </Box>
@@ -252,6 +383,19 @@ export default function AssetsPage() {
                   </TableCell>
                   {isAdmin && (
                     <TableCell align="center">
+                      {/* 🟢 BOTÃO DE EDITAR NO PC DE VOLTA */}
+                      <IconButton 
+                        size="small" 
+                        color="primary" 
+                        sx={{ mr: 1 }}
+                        onClick={() => {
+                          setEditingAsset(asset);
+                          setFormData({ code: asset.code, name: asset.name, quantity: String(asset.quantity), value: String(asset.value) });
+                          setOpenEditDialog(true);
+                        }}
+                      >
+                        <Edit />
+                      </IconButton>
                       <IconButton size="small" color="error" onClick={() => { setDeletingAsset(asset); setOpenDeleteDialog(true); }}>
                         <Delete />
                       </IconButton>
@@ -317,18 +461,103 @@ export default function AssetsPage() {
         </DialogActions>
       </Dialog>
 
-      {/* DIALOG DE CONFIRMAR EXCLUSÃO */}
+      {/* MODAL 1: MOVIMENTAÇÃO */}
+      <Dialog open={openMovimentoDialog} onClose={() => setOpenMovimentoDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Movimentação de Ativos</DialogTitle>
+        <DialogContent dividers>
+          <Box display="flex" flexDirection="column" gap={3} mt={1}>
+            <Alert severity="info">
+              Registre a entrada de novos itens ou a baixa por quebras, perdas ou vendas. A quantidade atual será atualizada automaticamente.
+            </Alert>
+            <Autocomplete
+              options={assets}
+              getOptionLabel={(o) => `${o.name} (Atual: ${o.quantity})`}
+              renderInput={(params: any) => <TextField {...params} label="Selecionar Ativo" required />}
+              value={selectedAsset}
+              onChange={(_, nv) => setSelectedAsset(nv)}
+            />
+            <TextField
+              select
+              fullWidth
+              label="Tipo de Movimentação"
+              value={tipoMovimento}
+              onChange={(e) => setTipoMovimento(e.target.value as 'entrada' | 'saida')}
+            >
+              <MenuItem value="entrada"> Entrada </MenuItem>
+              <MenuItem value="saida"> Saída </MenuItem>
+            </TextField>
+            <TextField
+              fullWidth
+              label="Quantidade"
+              type="number"
+              value={qtdMovimento}
+              onChange={(e) => setQtdMovimento(e.target.value)}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Descrição (Opcional)"
+              multiline
+              rows={2}
+              value={motivoMovimento}
+              onChange={(e) => setMotivoMovimento(e.target.value)}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setOpenMovimentoDialog(false)}>Cancelar</Button>
+          <Button onClick={handleSaveMovimento} variant="contained">Confirmar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* MODAL 2: NOVO ATIVO */}
+      <Dialog open={openNovoDialog} onClose={() => setOpenNovoDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Cadastrar Ativo</DialogTitle>
+        <DialogContent dividers>
+          <Box display="flex" flexDirection="column" gap={3} mt={1}>
+            <TextField fullWidth label="Nome do Ativo" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+            <TextField fullWidth label="Quantidade Inicial" type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} required />
+            <TextField fullWidth label="Preço Unitário (R$)" type="number" inputProps={{ step: '0.01' }} value={formData.value} onChange={(e) => setFormData({ ...formData, value: e.target.value })} required />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setOpenNovoDialog(false)}>Cancelar</Button>
+          <Button onClick={handleSaveNovoAtivo} variant="contained">Salvar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* MODAL 3: EDITAR */}
+      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Editar Ativo</DialogTitle>
+        <DialogContent dividers>
+          <Box display="flex" flexDirection="column" gap={3} mt={1}>
+            <TextField fullWidth label="Código" value={formData.code} disabled />
+            <TextField fullWidth label="Nome do Ativo" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+            <TextField fullWidth label="Preço Unitário (R$)" type="number" inputProps={{ step: '0.01' }} value={formData.value} onChange={(e) => setFormData({ ...formData, value: e.target.value })} required />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setOpenEditDialog(false)}>Cancelar</Button>
+          <Button onClick={handleSaveEdit} variant="contained">Salvar Alterações</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* MODAL 4: CONFIRMAR EXCLUSÃO / INATIVAR */}
       <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Confirmar Exclusão</DialogTitle>
         <DialogContent>
           <Box mt={1}>
-            <Typography>Tem certeza que deseja inativar <strong>{deletingAsset?.name}</strong>?</Typography>
+            {deletingAsset && (
+              <Typography>
+                Tem certeza que deseja inativar o <strong>{deletingAsset.name}</strong>?
+              </Typography>
+            )}
             <Alert severity="info" sx={{ mt: 2 }}>Ele será movido para a lixeira e você poderá restaurá-lo mais tarde.</Alert>
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setOpenDeleteDialog(false)}>Cancelar</Button>
-          <Button onClick={handleDelete} variant="contained" color="error">Inativar</Button>
+          <Button onClick={handleDelete} variant="contained" color="error">Excluir</Button>
         </DialogActions>
       </Dialog>
     </Box>

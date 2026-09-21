@@ -25,8 +25,8 @@ const formatarMoedaBrasileira = (valor: number): string => {
   }).format(valor);
 };
 
-// 🟢 Constante para base URL do backend
-const API_URL = 'http://localhost:3000';
+// 🟢 MUDANÇA AQUI: Caminho relativo para funcionar tanto no PC quanto no Celular
+const API_URL = '/api';
 
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -45,7 +45,6 @@ export default function InventoryPage() {
   const usuarioString = localStorage.getItem('usuarioAtivo');
   const usuarioLogado = usuarioString ? JSON.parse(usuarioString) : { codu: 1 };
 
-  // 🟢 Chamada com API_URL
   const fetchProducts = async () => {
     try {
       const response = await fetch(`${API_URL}/produtos?status=1`);
@@ -67,7 +66,6 @@ export default function InventoryPage() {
     }
   };
 
-  // 🟢 Chamada com API_URL
   const fetchTrashProducts = async () => {
     try {
       const response = await fetch(`${API_URL}/produtos?status=0`);
@@ -105,7 +103,6 @@ export default function InventoryPage() {
     if (!formData.name.trim() || !formData.price.trim()) return toast.error('Preencha os campos obrigatórios');
     try {
       if (editingProduct) {
-        // 🟢 Chamada com API_URL
         const response = await fetch(`${API_URL}/produtos/${editingProduct.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -141,7 +138,6 @@ export default function InventoryPage() {
   const handleDelete = async () => {
     if (!deletingProduct) return;
     try {
-      // 🟢 Chamada com API_URL
       const response = await fetch(`${API_URL}/produtos/${deletingProduct.id}?lote=${encodeURIComponent(deletingProduct.batch)}`, {
         method: 'DELETE',
       });
@@ -155,7 +151,6 @@ export default function InventoryPage() {
 
   const handleRestore = async (product: Product) => {
     try {
-      // 🟢 Chamada com API_URL
       const response = await fetch(`${API_URL}/produtos/${product.id}/reativar`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -176,7 +171,6 @@ export default function InventoryPage() {
 
   return (
     <Box>
-      {/* 🟢 Espaçamento (mb={4}) e Borda adicionada (variant="outlined") */}
       <Box mb={4} display="flex" justifyContent="flex-start">
         <Button 
           variant="outlined" 
@@ -310,7 +304,7 @@ export default function InventoryPage() {
       </Dialog>
 
       <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Confirmar Exclusão</DialogTitle>
+        <DialogTitle>Confirmar Inatividade</DialogTitle>
         <DialogContent>
           {deletingProduct && (
             <Box mt={1}>
@@ -319,7 +313,7 @@ export default function InventoryPage() {
               </Typography>
               
               <Alert icon={<Info fontSize="inherit" />} severity="info" sx={{ mt: 2 }}>
-                Ele será movido para a lixeira e deixará de aparecer no sistema. Você poderá restaurá-lo mais tarde.
+                Ele será movido para a aba de produtos inativos e deixará de aparecer no sistema. Você poderá restaurá-lo mais tarde.
               </Alert>
             </Box>
           )}

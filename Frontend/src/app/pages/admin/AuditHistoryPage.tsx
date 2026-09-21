@@ -141,9 +141,7 @@ export default function AuditHistoryPage() {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="flex-end" mb={2}>
-        <Button variant="outlined" color="primary" onClick={handleClearHistory} startIcon={<Delete />}>Limpar Histórico</Button>
-      </Box>
+      
 
       <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4, borderRadius: 2 }}>
         {/* 🟢 FlexBox para empilhar os filtros no celular */}
@@ -258,7 +256,7 @@ export default function AuditHistoryPage() {
                   <TableRow>
                     <TableCell>Data</TableCell><TableCell>Usuário</TableCell><TableCell>Categoria</TableCell>
                     <TableCell>Item Movimentado</TableCell><TableCell align="right">Saldo Anterior</TableCell>
-                    <TableCell align="right">Novo Saldo</TableCell><TableCell>Detalhes</TableCell><TableCell align="center">Ação</TableCell>
+                    <TableCell align="right">Novo Saldo</TableCell><TableCell align="left">Detalhes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -279,20 +277,54 @@ export default function AuditHistoryPage() {
                       <TableCell align="right"><Typography variant="body2" color="text.secondary">{record.estoque_anterior}</Typography></TableCell>
                       <TableCell align="right"><Typography variant="body1" fontWeight="bold" color="primary">{record.qtde}</Typography></TableCell>
                       <TableCell>
-                        {record.descricao && record.descricao !== 'Sem descrição' ? (
-                          <Accordion elevation={0} sx={{ '&:before': { display: 'none' }, bgcolor: 'transparent' }}>
-                            <AccordionSummary expandIcon={<ExpandMore />} sx={{ minHeight: 'auto', p: 0, m: 0, '& .MuiAccordionSummary-content': { m: 0 } }}>
-                              <Typography variant="caption" color="primary" sx={{ cursor: 'pointer' }}>Ver observação</Typography>
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 0, pt: 1 }}>
-                              <Typography variant="caption" display="block" sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#272727' : '#f1f5f9', p: 1, borderRadius: 1 }}>{record.descricao}</Typography>
-                            </AccordionDetails>
-                          </Accordion>
-                        ) : <Typography variant="caption" color="text.secondary">Sem observações</Typography>}
-                      </TableCell>
-                      <TableCell align="center">
-                        <IconButton size="small" color="error" onClick={() => handleDeleteRecord(record.codse, record.tipo_auditoria)}><Delete fontSize="small" /></IconButton>
-                      </TableCell>
+          {record.descricao && record.descricao !== 'Sem descrição' ? (
+            <Accordion 
+              elevation={0} 
+              sx={{ 
+                '&:before': { display: 'none' }, 
+                bgcolor: 'transparent' 
+              }}
+            >
+              <AccordionSummary 
+                expandIcon={<ExpandMore />} 
+                sx={{ 
+                  minHeight: 'auto', 
+                  p: 0, 
+                  m: 0, 
+                  // 1. Alinha o conteúdo e o ícone juntos à esquerda
+                  justifyContent: 'flex-start',
+                  '& .MuiAccordionSummary-content': { 
+                    m: 0,
+                    flexGrow: 0 // Impede que o texto ocupe todo o espaço e empurre a seta
+                  },
+                  '& .MuiAccordionSummary-expandIconWrapper': {
+                    ml: 0.5 // Espaçamento pequeno entre o texto e a seta
+                  }
+                }}
+              >
+                <Typography variant="caption" color="primary" sx={{ cursor: 'pointer' }}>
+                  Ver observação
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ p: 0, pt: 1 }}>
+                <Typography 
+                  variant="caption" 
+                  display="block" 
+                  sx={{ 
+                    bgcolor: (theme) => theme.palette.mode === 'dark' ? '#272727' : '#f1f5f9', 
+                    p: 1, 
+                    borderRadius: 1 
+                  }}
+                >
+                  {record.descricao}
+                </Typography>
+              </AccordionDetails>
+            </Accordion>
+          ) : (
+            <Typography variant="caption" color="text.secondary">Sem observações</Typography>
+          )}
+        </TableCell>
+                      
                     </TableRow>
                   ))}
                 </TableBody>

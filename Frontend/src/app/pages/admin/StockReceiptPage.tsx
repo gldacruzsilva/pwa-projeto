@@ -39,25 +39,22 @@ export default function StockReceiptPage() {
 
   // 🟢 BLOQUEADORES DE TECLADO (A blindagem mágica)
   const blockInvalidInteger = (e: React.KeyboardEvent) => {
-    // Bloqueia símbolos matemáticos, letras e decimais em campos inteiros
-    if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) {
-      e.preventDefault();
-    }
+    if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) e.preventDefault();
   };
 
   const blockInvalidDecimal = (e: React.KeyboardEvent) => {
-    // Bloqueia símbolos e letras, mas permite ponto e vírgula
-    if (['-', '+', 'e', 'E'].includes(e.key)) {
-      e.preventDefault();
-    }
+    if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
   };
 
   const handleCadastrarNovoProduto = async () => {
     if (!novoProduto.codp.trim() || !novoProduto.nome.trim()) return toast.error('Preencha os campos obrigatórios!');
     
-    // Barreira de segurança final no modal
     if (Number(novoProduto.codp) <= 0) return toast.error('O Código não pode ser zero.');
     if (Number(novoProduto.lote) < 0) return toast.error('O Lote não pode ser negativo.');
+
+    // 🟢 Trata vírgulas antes de salvar no banco
+    const precoVendaFMT = Number(String(novoProduto.preco).replace(',', '.') || 0);
+    const precoCustoFMT = Number(String(novoProduto.preco_custo).replace(',', '.') || 0);
 
     try {
       const resposta = await fetch('/api/produtos', {
@@ -66,8 +63,8 @@ export default function StockReceiptPage() {
         body: JSON.stringify({
           codp: parseInt(novoProduto.codp), 
           nome: novoProduto.nome, 
-          preco_venda: parseFloat(novoProduto.preco || '0'),
-          preco_custo: parseFloat(novoProduto.preco_custo || '0'), 
+          preco_venda: precoVendaFMT,
+          preco_custo: precoCustoFMT, 
           lote: novoProduto.lote || '1', 
           qtde_estoque: 0,
           descricao: 'ENTRADA: Cadastro de Novo Produto no Sistema', 
@@ -79,7 +76,10 @@ export default function StockReceiptPage() {
         setModalOpen(false);
         setNovoProduto({ codp: '', nome: '', preco: '', preco_custo: '', lote: '1' });
         buscarProdutos();
-      } else { toast.error('Falha ou Lote duplicado.'); }
+      } else { 
+        const errorData = await resposta.json().catch(() => ({}));
+        toast.error(`Erro: ${errorData.detalhe || errorData.mensagem || 'Falha ao cadastrar produto.'}`);
+      }
     } catch (erro) { toast.error('Erro de conexão ao cadastrar.'); }
   };
 
@@ -107,9 +107,8 @@ export default function StockReceiptPage() {
     }
   };
 
-  // 🟢 Funções de atualização do estado da tabela
   const handleDecimalChange = (index: number, field: 'preco_venda' | 'costPrice', val: string) => {
-    if (Number(val) < 0) return; // Barreira extra contra copy-paste negativo
+    if (Number(val.replace(',', '.')) < 0) return; 
     const newItems = [...receiptItems];
     newItems[index][field] = val;
     setReceiptItems(newItems);
@@ -153,11 +152,11 @@ export default function StockReceiptPage() {
   const handleSaveReceipt = async () => {
     if (receiptItems.length === 0) return toast.error('Adicione produtos para movimentar');
 
-    // 🟢 BARREIRA FINAL ANTES DE ENVIAR AO BANCO
+    // 🟢 BARREIRA FINAL E CONVERSÃO DE VÍRGULAS
     for (const item of receiptItems) {
       const qtyNum = Number(item.quantity);
-      const custoNum = Number(item.costPrice);
-      const precoNum = Number(item.preco_venda);
+      const custoNum = Number(String(item.costPrice).replace(',', '.'));
+      const precoNum = Number(String(item.preco_venda).replace(',', '.'));
       const loteNum = Number(item.batch);
 
       if (isNaN(qtyNum) || qtyNum <= 0) return toast.error(`Atenção: A quantidade de "${item.productName}" deve ser MAIOR que zero!`);
@@ -169,7 +168,7 @@ export default function StockReceiptPage() {
       if (novoEstoque < 0) return toast.error(`Atenção: O estoque final de ${item.productName} não pode ficar negativo (${novoEstoque}).`);
 
       if (item.tipoMovimento === 'entrada') {
-        const mudouCusto = custoNum !== item.originalCostPrice;
+        const mudouCusto = custoNum !== Number(item.originalCostPrice);
         const mudouLote = String(item.batch) !== String(item.originalBatch);
         if (mudouCusto && !mudouLote) return toast.error(`Atenção: Custo de "${item.productName}" mudou. Informe um NOVO LOTE.`);
         if (mudouLote && !mudouCusto) return toast.error(`Atenção: Lote de "${item.productName}" mudou. Avalie se o custo se mantém.`);
@@ -184,15 +183,20 @@ export default function StockReceiptPage() {
         const qtyNum = Number(item.quantity);
         const novoEstoque = item.currentStock + (item.tipoMovimento === 'entrada' ? qtyNum : -qtyNum);
         
+        // Formata os números antes de salvar
+        const precoVendaBD = Number(String(item.preco_venda).replace(',', '.'));
+        const precoCustoBD = Number(String(item.costPrice).replace(',', '.'));
+
         if (criarNovoLote) {
+          // 🟢 ROTA CORRIGIDA COM BARRA: /api/produtos
           return fetch('/api/produtos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               codp: parseInt(item.productCode), 
               nome: item.productName, 
-              preco_venda: Number(item.preco_venda), 
-              preco_custo: Number(item.costPrice), 
+              preco_venda: precoVendaBD, 
+              preco_custo: precoCustoBD, 
               lote: item.batch, 
               qtde_estoque: qtyNum,
               descricao: textoDescricao, 
@@ -200,12 +204,13 @@ export default function StockReceiptPage() {
             })
           });
         } else {
-          return fetch(`api/produtos/${item.productCode}`, {
+          // 🟢 ROTA CORRIGIDA COM BARRA: /api/produtos/...
+          return fetch(`/api/produtos/${item.productCode}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               nome: item.productName, 
-              preco_venda: Number(item.preco_venda), 
+              preco_venda: precoVendaBD, 
               qtde_estoque: novoEstoque,
               qtde_movimento: qtyNum,
               preco_custo: item.originalCostPrice, 
@@ -217,11 +222,25 @@ export default function StockReceiptPage() {
           });
         }
       });
-      await Promise.all(promessas);
-      toast.success('Sucesso!');
-      setDescription('');
-      setReceiptItems([]);
-      setTimeout(() => window.location.reload(), 1500);
+      
+      const respostas = await Promise.all(promessas);
+      
+      // Verifica se houve erros
+      let hasError = false;
+      for (const r of respostas) {
+        if (!r.ok) {
+           hasError = true;
+           const erro = await r.json().catch(() => ({}));
+           toast.error(erro.detalhe || erro.mensagem || 'Falha ao salvar algum item.');
+        }
+      }
+
+      if (!hasError) {
+        toast.success('Sucesso!');
+        setDescription('');
+        setReceiptItems([]);
+        setTimeout(() => window.location.reload(), 1500);
+      }
     } catch (erro) { toast.error('Erro ao salvar no servidor.'); }
   };
 
@@ -298,34 +317,32 @@ export default function StockReceiptPage() {
                             <MenuItem value="saida">Saída</MenuItem>
                           </TextField>
                           <TextField 
-                            fullWidth label="Lote" type="number" value={item.batch} size="small" disabled={item.tipoMovimento === 'saida'}
-                            onChange={(e) => handleIntegerChange(index, 'batch', e.target.value)}
-                            onKeyDown={blockInvalidInteger}
-                            inputProps={{ min: 0, step: 1 }}
+                            fullWidth label="Lote" type="text" value={item.batch} size="small" disabled={item.tipoMovimento === 'saida'}
+                            onChange={(e) => handleIntegerChange(index, 'batch', e.target.value.replace(/\D/g, ''))}
+                            inputProps={{ inputMode: 'numeric' }}
                           />
                         </Box>
                         
                         <Box display="flex" gap={2}>
                           <TextField 
-                            fullWidth label="Custo (R$)" type="number" value={item.costPrice} size="small" disabled={item.tipoMovimento === 'saida'}
+                            fullWidth label="Custo (R$)" type="text" value={item.costPrice} size="small" disabled={item.tipoMovimento === 'saida'}
                             onChange={(e) => handleDecimalChange(index, 'costPrice', e.target.value)}
                             onKeyDown={blockInvalidDecimal}
-                            inputProps={{ min: 0, step: 1 }}
+                            inputProps={{ inputMode: 'decimal' }}
                           />
                           <TextField 
-                            fullWidth label="Venda (R$)" type="number" value={item.preco_venda} size="small"
+                            fullWidth label="Venda (R$)" type="text" value={item.preco_venda} size="small"
                             onChange={(e) => handleDecimalChange(index, 'preco_venda', e.target.value)}
                             onKeyDown={blockInvalidDecimal}
-                            inputProps={{ min: 0, step: 1 }}
+                            inputProps={{ inputMode: 'decimal' }}
                           />
                         </Box>
 
                         <Box display="flex" gap={2} alignItems="center">
                           <TextField 
-                            fullWidth label="Quantidade" type="number" value={item.quantity} size="small"
-                            onChange={(e) => handleIntegerChange(index, 'quantity', e.target.value)}
-                            onKeyDown={blockInvalidInteger}
-                            inputProps={{ min: 0, step: 1 }}
+                            fullWidth label="Quantidade" type="text" value={item.quantity} size="small"
+                            onChange={(e) => handleIntegerChange(index, 'quantity', e.target.value.replace(/\D/g, ''))}
+                            inputProps={{ inputMode: 'numeric' }}
                           />
                           <Box sx={{ textAlign: 'center', width: '100%' }}>
                             <Typography variant="caption" color="text.secondary" display="block">Estoque Final</Typography>
@@ -377,34 +394,32 @@ export default function StockReceiptPage() {
                         </TableCell>
                         <TableCell>
                           <TextField 
-                            type="number" value={item.batch} size="small" disabled={item.tipoMovimento === 'saida'} sx={{ width: 90 }}
-                            onChange={(e) => handleIntegerChange(index, 'batch', e.target.value)} 
-                            onKeyDown={blockInvalidInteger}
-                            inputProps={{ min: 0, step: 1 }}
+                            type="text" value={item.batch} size="small" disabled={item.tipoMovimento === 'saida'} sx={{ width: 90 }}
+                            onChange={(e) => handleIntegerChange(index, 'batch', e.target.value.replace(/\D/g, ''))} 
+                            inputProps={{ inputMode: 'numeric' }}
                           />
                         </TableCell>
                         <TableCell>
                           <TextField 
-                            type="number" value={item.costPrice} size="small" disabled={item.tipoMovimento === 'saida'} sx={{ width: 110 }}
+                            type="text" value={item.costPrice} size="small" disabled={item.tipoMovimento === 'saida'} sx={{ width: 110 }}
                             onChange={(e) => handleDecimalChange(index, 'costPrice', e.target.value)} 
                             onKeyDown={blockInvalidDecimal}
-                            inputProps={{ min: 0, step: 1 }}
+                            inputProps={{ inputMode: 'decimal' }}
                           />
                         </TableCell>
                         <TableCell>
                           <TextField 
-                            type="number" value={item.preco_venda} size="small" sx={{ width: 110 }}
+                            type="text" value={item.preco_venda} size="small" sx={{ width: 110 }}
                             onChange={(e) => handleDecimalChange(index, 'preco_venda', e.target.value)} 
                             onKeyDown={blockInvalidDecimal}
-                            inputProps={{ min: 0, step: 1 }}
+                            inputProps={{ inputMode: 'decimal' }}
                           />
                         </TableCell>
                         <TableCell>
                           <TextField 
-                            type="number" value={item.quantity} size="small" sx={{ width: 100 }}
-                            onChange={(e) => handleIntegerChange(index, 'quantity', e.target.value)} 
-                            onKeyDown={blockInvalidInteger}
-                            inputProps={{ min: 0, step: 1 }}
+                            type="text" value={item.quantity} size="small" sx={{ width: 100 }}
+                            onChange={(e) => handleIntegerChange(index, 'quantity', e.target.value.replace(/\D/g, ''))} 
+                            inputProps={{ inputMode: 'numeric' }}
                           />
                         </TableCell>
                         <TableCell align="right" className={`font-bold ${novoEstoque < 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -432,16 +447,15 @@ export default function StockReceiptPage() {
         </Paper>
       )}
 
-      {/* 🟢 MODAL COM CAMPOS BLINDADOS */}
+      {/* 🟢 MODAL COM PREÇOS FORMATADOS E BLINDADOS */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Cadastrar Novo Produto</DialogTitle>
         <DialogContent dividers>
           <Box display="flex" flexDirection="column" gap={3} mt={1}>
             <TextField 
-              label="Código (Barras)" fullWidth type="number" value={novoProduto.codp} 
-              onChange={(e) => { if (Number(e.target.value) >= 0) setNovoProduto({ ...novoProduto, codp: e.target.value }) }} 
-              onKeyDown={blockInvalidInteger}
-              inputProps={{ min: 1, step: 1 }} 
+              label="Código (Barras)" fullWidth type="text" value={novoProduto.codp} 
+              onChange={(e) => setNovoProduto({ ...novoProduto, codp: e.target.value.replace(/\D/g, '') })} 
+              inputProps={{ inputMode: 'numeric' }} 
             />
             <TextField 
               label="Nome" fullWidth value={novoProduto.nome} 
@@ -449,23 +463,22 @@ export default function StockReceiptPage() {
             />
             <Box display="flex" gap={2}>
               <TextField 
-                label="Lote Inicial" fullWidth type="number" value={novoProduto.lote} 
-                onChange={(e) => { if (Number(e.target.value) >= 0) setNovoProduto({ ...novoProduto, lote: e.target.value }) }} 
-                onKeyDown={blockInvalidInteger}
-                inputProps={{ min: 0, step: 1 }} 
+                label="Lote Inicial" fullWidth type="text" value={novoProduto.lote} 
+                onChange={(e) => setNovoProduto({ ...novoProduto, lote: e.target.value.replace(/\D/g, '') })} 
+                inputProps={{ inputMode: 'numeric' }} 
               />
               <TextField 
-                label="Preço Custo (R$)" fullWidth type="number" value={novoProduto.preco_custo} 
-                onChange={(e) => { if (Number(e.target.value) >= 0) setNovoProduto({ ...novoProduto, preco_custo: e.target.value }) }} 
+                label="Preço Custo (R$)" fullWidth type="text" value={novoProduto.preco_custo} 
+                onChange={(e) => setNovoProduto({ ...novoProduto, preco_custo: e.target.value })} 
                 onKeyDown={blockInvalidDecimal}
-                inputProps={{ min: 0, step: 1 }} 
+                inputProps={{ inputMode: 'decimal' }} 
               />
             </Box>
             <TextField 
-              label="Preço Comanda (R$)" fullWidth type="number" value={novoProduto.preco} 
-              onChange={(e) => { if (Number(e.target.value) >= 0) setNovoProduto({ ...novoProduto, preco: e.target.value }) }} 
+              label="Preço Comanda (R$)" fullWidth type="text" value={novoProduto.preco} 
+              onChange={(e) => setNovoProduto({ ...novoProduto, preco: e.target.value })} 
               onKeyDown={blockInvalidDecimal}
-              inputProps={{ min: 0, step: 1 }} 
+              inputProps={{ inputMode: 'decimal' }} 
             />
           </Box>
         </DialogContent>

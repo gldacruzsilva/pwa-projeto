@@ -54,8 +54,10 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
   
   const [ativoToDelete, setItemToDelete] = useState<{ codp: number, nome: string, lote: string } | null>(null);
 
+  // 🟢 ESTADO NOVO: Memória cronológica de inserção dos itens
+  const [itemHistory, setItemHistory] = useState<string[]>([]);
+
   const barcodeInputRef = useRef<HTMLInputElement>(null);
-  
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -82,6 +84,25 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
     fetchData();
   }, [orderId]);
 
+  // 🟢 LÓGICA DE ORDENAÇÃO FIXA E NUMERAÇÃO
+  useEffect(() => {
+    if (order?.itens) {
+      setItemHistory(prev => {
+        const currentKeys = order.itens.map(i => `${i.codp}-${i.lote}`);
+        // Mantém a ordem dos que já estavam na lista
+        const filteredPrev = prev.filter(key => currentKeys.includes(key));
+        // Descobre os itens novos recém-chegados
+        const novos = currentKeys.filter(key => !filteredPrev.includes(key));
+        
+        // Se nada mudou, devolve a mesma lista para não piscar a tela
+        if (novos.length === 0 && filteredPrev.length === prev.length) return prev;
+        
+        // Os itens novos entram sempre no final (ganhando a numeração mais alta)
+        return [...filteredPrev, ...novos];
+      });
+    }
+  }, [order]);
+
   useEffect(() => {
     if (addMode === 'barcode' && barcodeInputRef.current && !isMobile) {
       barcodeInputRef.current.focus();
@@ -96,7 +117,6 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
 
   const nomeCliente = order.Nick || order.nick || 'Sem nome';
   const codigoComanda = order.codv || order.codc || orderId;
-
   const popularProducts = [...products].slice(0, 6);
 
   const handleAddItem = async (codp: number, qtde: number, nome: string, lote: string) => {
@@ -193,6 +213,16 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
   const total = Number(order.valor_total) || 0;
   const totalPaid = Number((order as any).totalPaid) || 0; 
   const remaining = total - totalPaid;
+
+  // 🟢 AQUI ACONTECE A MÁGICA VISUAL: Atribui o número e vira a lista de cabeça para baixo!
+  const itensOrdenados = [...itemHistory]
+    .map((key, index) => {
+      const item = order.itens.find(i => `${i.codp}-${i.lote}` === key);
+      if (!item) return null;
+      return { ...item, numeroSequencia: index + 1 }; // O mais antigo ganha 1, o próximo ganha 2...
+    })
+    .filter((item): item is (ItemComanda & { numeroSequencia: number }) => item !== null)
+    .reverse(); // Ao inverter, o número maior (mais recente) vai para o topo da lista.
 
   return (
     <>
@@ -329,7 +359,7 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
           <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 3, mb: 4 }}>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, fontSize: '1.1rem' }}>Itens na Comanda</Typography>
 
-            {order.itens.length === 0 ? (
+            {itensOrdenados.length === 0 ? (
               <Alert severity="info" sx={{ mb: 4, borderRadius: '8px' }}>
                 Nenhum ativo adicionado ainda. Use as opções acima para lançar produtos.
               </Alert>
@@ -337,58 +367,76 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
               <>
                 {isMobile ? (
                   <Box display="flex" flexDirection="column" gap={2} mb={2}>
-                    {order.itens.map((ativo, index) => (
-                      <Card variant="outlined" key={`${ativo.codp}-${ativo.lote}-${index}`}>
-                        <CardContent sx={{ pb: '16px !important', p: 2 }}>
-                          <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1.5}>
-                            <Typography variant="subtitle1" fontWeight="bold" lineHeight={1.2}>
-                              {ativo.nome}
-                            </Typography>
-                            <IconButton 
-                              size="small" 
-                              color="error" 
-                              disabled={remaining <= 0 && totalPaid > 0}
-                              onClick={() => setItemToDelete({ codp: ativo.codp, nome: ativo.nome, lote: ativo.lote })}
-                              sx={{ mt: -0.5, mr: -0.5 }}
-                            >
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </Box>
-                          <Box display="flex" justifyContent="space-between" alignItems="center">
-                            <Box display="flex" alignItems="center" gap={1}>
+                    {/* 🟢 O MAP AGORA USA A LISTA ORDENADA E FIXA */}
+                    {itensOrdenados.map((ativo) => {
+                      const valorTotalDesteItem = Number(ativo.valor_unit) * Number(ativo.qtde);
+                      // TRAVA MATEMÁTICA PROTEGIDA
+                      const bloqueiaDiminuir = Number(ativo.qtde) <= 1 || (total - Number(ativo.valor_unit)) < totalPaid;
+                      const bloqueiaRemover = (total - valorTotalDesteItem) < totalPaid;
+
+                      return (
+                        <Card variant="outlined" key={`${ativo.codp}-${ativo.lote}`}>
+                          <CardContent sx={{ pb: '16px !important', p: 2 }}>
+                            <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1.5}>
+                              
+                              {/* 🟢 VISUAL DO NÚMERO NO CELULAR */}
+                              <Box display="flex" alignItems="center" gap={1.5}>
+                                <Box sx={{ width: 26, height: 26, borderRadius: '50%', bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                  {ativo.numeroSequencia}
+                                </Box>
+                                <Typography variant="subtitle1" fontWeight="bold" lineHeight={1.2}>
+                                  {ativo.nome}
+                                </Typography>
+                              </Box>
+
                               <IconButton 
                                 size="small" 
-                                sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}
-                                onClick={() => handleUpdateQuantity(ativo.codp, ativo.lote, ativo.qtde, -1)} 
-                                disabled={Number(ativo.qtde) <= 1}
+                                color="error" 
+                                disabled={bloqueiaRemover}
+                                onClick={() => setItemToDelete({ codp: ativo.codp, nome: ativo.nome, lote: ativo.lote })}
+                                sx={{ mt: -0.5, mr: -0.5 }}
                               >
-                                <Remove fontSize="small" />
-                              </IconButton>
-                              <Typography sx={{ minWidth: '24px', textAlign: 'center', fontWeight: 600 }}>{Number(ativo.qtde)}</Typography>
-                              <IconButton 
-                                size="small" 
-                                sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}
-                                onClick={() => handleUpdateQuantity(ativo.codp, ativo.lote, ativo.qtde, 1)}
-                              >
-                                <Add fontSize="small" />
+                                <Delete fontSize="small" />
                               </IconButton>
                             </Box>
-                            <Box textAlign="right">
-                              <Typography variant="caption" color="text.secondary" display="block">Subtotal</Typography>
-                              <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-                                R$ {(Number(ativo.valor_unit) * Number(ativo.qtde)).toFixed(2)}
-                              </Typography>
+                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <IconButton 
+                                  size="small" 
+                                  sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}
+                                  onClick={() => handleUpdateQuantity(ativo.codp, ativo.lote, ativo.qtde, -1)} 
+                                  disabled={bloqueiaDiminuir}
+                                >
+                                  <Remove fontSize="small" />
+                                </IconButton>
+                                <Typography sx={{ minWidth: '24px', textAlign: 'center', fontWeight: 600 }}>{Number(ativo.qtde)}</Typography>
+                                <IconButton 
+                                  size="small" 
+                                  sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}
+                                  onClick={() => handleUpdateQuantity(ativo.codp, ativo.lote, ativo.qtde, 1)}
+                                >
+                                  <Add fontSize="small" />
+                                </IconButton>
+                              </Box>
+                              <Box textAlign="right">
+                                <Typography variant="caption" color="text.secondary" display="block">Subtotal</Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                                  R$ {valorTotalDesteItem.toFixed(2)}
+                                </Typography>
+                              </Box>
                             </Box>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    ))}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </Box>
                 ) : (
                   <TableContainer sx={{ mb: 4, border: 1, borderColor: 'divider', borderRadius: '8px' }}>
                     <Table size="small">
                       <TableHead sx={{ bgcolor: 'action.hover' }}>
                         <TableRow>
+                          {/* 🟢 COLUNA DO NÚMERO NO PC */}
+                          <TableCell align="center" sx={{ fontWeight: 600, width: 40 }}>#</TableCell>
                           <TableCell sx={{ fontWeight: 600 }}>Produto</TableCell>
                           <TableCell align="center" sx={{ fontWeight: 600 }}>Qtd</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 600 }}>Preço Unit.</TableCell>
@@ -397,30 +445,55 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {order.itens.map((ativo, index) => (
-                          <TableRow key={`${ativo.codp}-${ativo.lote}-${index}`}>
-                            <TableCell>{ativo.nome}</TableCell>
-                            <TableCell align="center">
-                              <Box display="flex" alignItems="center" justifyContent="center" gap={1}>
-                                <IconButton size="small" onClick={() => handleUpdateQuantity(ativo.codp, ativo.lote, ativo.qtde, -1)} disabled={Number(ativo.qtde) <= 1}><Remove fontSize="small" /></IconButton>
-                                <Typography sx={{ minWidth: '24px', textAlign: 'center', fontWeight: 500 }}>{Number(ativo.qtde)}</Typography>
-                                <IconButton size="small" onClick={() => handleUpdateQuantity(ativo.codp, ativo.lote, ativo.qtde, 1)}><Add fontSize="small" /></IconButton>
-                              </Box>
-                            </TableCell>
-                            <TableCell align="right">R$ {Number(ativo.valor_unit).toFixed(2)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>R$ {(Number(ativo.valor_unit) * Number(ativo.qtde)).toFixed(2)}</TableCell>
-                            <TableCell align="center">
-                            <IconButton 
-                              size="small" 
-                              color="error" 
-                              disabled={remaining <= 0 && totalPaid > 0}
-                              onClick={() => setItemToDelete({ codp: ativo.codp, nome: ativo.nome, lote: ativo.lote })}
-                            >
-                              <Delete fontSize="small" />
-                            </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {itensOrdenados.map((ativo) => {
+                          const valorTotalDesteItem = Number(ativo.valor_unit) * Number(ativo.qtde);
+                          const bloqueiaDiminuir = Number(ativo.qtde) <= 1 || (total - Number(ativo.valor_unit)) < totalPaid;
+                          const bloqueiaRemover = (total - valorTotalDesteItem) < totalPaid;
+
+                          return (
+                            <TableRow key={`${ativo.codp}-${ativo.lote}`}>
+                              
+                              {/* 🟢 VISUAL DO NÚMERO NO PC */}
+                              <TableCell align="center">
+                                <Box sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: 'primary.main', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                  {ativo.numeroSequencia}
+                                </Box>
+                              </TableCell>
+                              
+                              <TableCell>{ativo.nome}</TableCell>
+                              <TableCell align="center">
+                                <Box display="flex" alignItems="center" justifyContent="center" gap={1}>
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={() => handleUpdateQuantity(ativo.codp, ativo.lote, ativo.qtde, -1)} 
+                                    disabled={bloqueiaDiminuir}
+                                  >
+                                    <Remove fontSize="small" />
+                                  </IconButton>
+                                  <Typography sx={{ minWidth: '24px', textAlign: 'center', fontWeight: 500 }}>{Number(ativo.qtde)}</Typography>
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={() => handleUpdateQuantity(ativo.codp, ativo.lote, ativo.qtde, 1)}
+                                  >
+                                    <Add fontSize="small" />
+                                  </IconButton>
+                                </Box>
+                              </TableCell>
+                              <TableCell align="right">R$ {Number(ativo.valor_unit).toFixed(2)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 600 }}>R$ {valorTotalDesteItem.toFixed(2)}</TableCell>
+                              <TableCell align="center">
+                              <IconButton 
+                                size="small" 
+                                color="error" 
+                                disabled={bloqueiaRemover}
+                                onClick={() => setItemToDelete({ codp: ativo.codp, nome: ativo.nome, lote: ativo.lote })}
+                              >
+                                <Delete fontSize="small" />
+                              </IconButton>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>

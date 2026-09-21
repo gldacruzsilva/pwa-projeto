@@ -1,35 +1,17 @@
 import { useState, useEffect } from 'react';
 import {
-  Paper,
-  Typography,
-  Box,
-  Grid,
-  Card,
-  CardContent,
-  TextField,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Tooltip as MuiTooltip,
-  useTheme,
-  useMediaQuery,
+  Paper, Typography, Box, Grid, Card, CardContent, TextField, Button,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  IconButton, Tooltip as MuiTooltip, useTheme, useMediaQuery,
 } from '@mui/material';
 import {
-  ShoppingCart,
-  AttachMoney,
-  Info,
-  Search,
+  ShoppingCart, AttachMoney, Info, Search,
+  Payments, CreditCard, QrCodeScanner
 } from '@mui/icons-material';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import ProductPaymentDetailsDialog from '../../components/admin/ProductPaymentDetailsDialog';
 import { toast } from 'sonner';
 
-// Função para formatar a data de AAAA-MM-DD para DD/MM/AAAA no gráfico
 const formatarDataBR = (dataISO: string) => {
   if (!dataISO) return '';
   const partes = dataISO.split('-');
@@ -37,7 +19,6 @@ const formatarDataBR = (dataISO: string) => {
   return `${partes[2]}/${partes[1]}/${partes[0]}`;
 };
 
-// Função para formatar dinheiro no padrão brasileiro (Ex: 11.354,24)
 const formatarDinheiroBR = (valor: number) => {
   return valor.toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
@@ -62,18 +43,15 @@ export default function ReportsPage() {
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [productSales, setProductSales] = useState<any[]>([]);
 
-  const [selectedProduct, setSelectedProduct] = useState<{
-    code: string;
-    name: string;
-    revenue: number;
-  } | null>(null);
+  // 🟢 NOVO ESTADO: Armazena o resumo global do caixa
+  const [globalPaymentStats, setGlobalPaymentStats] = useState({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
 
+  const [selectedProduct, setSelectedProduct] = useState<{ code: string; name: string; revenue: number; } | null>(null);
   const [paymentStats, setPaymentStats] = useState<any>({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
   const [paymentUnits, setPaymentUnits] = useState<any>({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
 
   const validateDateYear = (date: string): boolean => {
     if (!date) return true;
-    
     const year = new Date(date).getFullYear();
     const currentYear = new Date().getFullYear();
     
@@ -81,24 +59,20 @@ export default function ReportsPage() {
       setDateError('O ano deve ser igual ou superior a 2020');
       return false;
     }
-    
     if (year > currentYear) {
       setDateError('O ano não pode ser superior ao ano atual');
       return false;
     }
-    
     setDateError('');
     return true;
   };
 
   const handleViewDetails = async (item: any) => {
     try {
-      // 🟢 Corrigido para /api relativo para funcionar no celular
       const response = await fetch(`/api/relatorios/produtos/${encodeURIComponent(item.product)}/pagamentos?inicio=${startDate}&fim=${endDate}`);
       
       if (response.ok) {
         const dados = await response.json();
-        
         const stats: Record<string, number> = {};
         const units: Record<string, number> = {};
         
@@ -109,12 +83,7 @@ export default function ReportsPage() {
         
         setPaymentStats(stats);
         setPaymentUnits(units);
-        
-        setSelectedProduct({
-          code: item.code || 'Sistema', 
-          name: item.product,
-          revenue: item.revenue,
-        });
+        setSelectedProduct({ code: item.code || 'Sistema', name: item.product, revenue: item.revenue });
       } else {
         toast.error('Nenhum detalhe de pagamento encontrado.');
       }
@@ -125,10 +94,8 @@ export default function ReportsPage() {
 
   const carregarRelatorios = async () => {
     try {
-      // 🟢 Corrigido para /api relativo
       const response = await fetch(`/api/relatorios/vendas`);
       if (!response.ok) throw new Error('Erro ao buscar comandas');
-      
       const comandas = await response.json();
       
       if (!Array.isArray(comandas)) return;
@@ -162,11 +129,7 @@ export default function ReportsPage() {
         const sortKey = `${dateObj.getFullYear()}-${dateObj.getMonth().toString().padStart(2, '0')}`;
         
         if (!monthlyMap[monthStr]) {
-          monthlyMap[monthStr] = { 
-            month: monthStr.charAt(0).toUpperCase() + monthStr.slice(1), 
-            revenue: 0, 
-            sortKey 
-          };
+          monthlyMap[monthStr] = { month: monthStr.charAt(0).toUpperCase() + monthStr.slice(1), revenue: 0, sortKey };
         }
         monthlyMap[monthStr].revenue += valorComanda;
       });
@@ -177,7 +140,6 @@ export default function ReportsPage() {
       setMonthlyData(Object.values(monthlyMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)));
 
       try {
-        // 🟢 Corrigido para /api relativo
         const prodRes = await fetch(`/api/relatorios/produtos?inicio=${startDate}&fim=${endDate}`);
         if (prodRes.ok) {
           const prodData = await prodRes.json();
@@ -188,13 +150,26 @@ export default function ReportsPage() {
           }));
           setProductSales(formatados);
         }
-      } catch (err) {
-        console.warn('Erro ao buscar produtos mais vendidos do banco.');
-        setProductSales([]);
-      }
+      } catch (err) { setProductSales([]); }
+
+      // 🟢 BUSCA O RESUMO DE PAGAMENTOS GERAIS PARA OS CARDS
+      try {
+        const pagRes = await fetch(`/api/relatorios/pagamentos?inicio=${startDate}&fim=${endDate}`);
+        if (pagRes.ok) {
+          const pagData = await pagRes.json();
+          const stats = { dinheiro: 0, debito: 0, credito: 0, pix: 0 };
+          pagData.forEach((p: any) => {
+            const tipo = p.tipo_pagamento ? p.tipo_pagamento.toLowerCase() : '';
+            if (tipo.includes('dinheiro')) stats.dinheiro += Number(p.total);
+            else if (tipo.includes('debito') || tipo.includes('débito')) stats.debito += Number(p.total);
+            else if (tipo.includes('credito') || tipo.includes('crédito')) stats.credito += Number(p.total);
+            else if (tipo.includes('pix')) stats.pix += Number(p.total);
+          });
+          setGlobalPaymentStats(stats);
+        }
+      } catch (err) { console.warn('Erro ao buscar pagamentos globais'); }
 
     } catch (error) {
-      console.error('Erro na requisição de relatórios:', error);
       toast.error('Erro ao carregar dados do relatório. Verifique a conexão com o banco.');
     }
   };
@@ -209,71 +184,43 @@ export default function ReportsPage() {
         <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', fontWeight: 'bold' }}>
           Filtrar Período
         </Typography>
-        
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3, alignItems: { xs: 'stretch', sm: 'flex-start' } }}>
           <TextField
-            label="Data Início"
-            type="date"
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); validateDateYear(e.target.value); }}
-            InputLabelProps={{ shrink: true }}
-            error={!!dateError}
-            fullWidth={isMobile}
-            sx={{ minWidth: 200 }}
+            label="Data Início" type="date" value={startDate} InputLabelProps={{ shrink: true }} error={!!dateError}
+            onChange={(e) => { setStartDate(e.target.value); validateDateYear(e.target.value); }} fullWidth={isMobile} sx={{ minWidth: 200 }}
           />
           <TextField
-            label="Data Fim"
-            type="date"
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); validateDateYear(e.target.value); }}
-            InputLabelProps={{ shrink: true }}
-            error={!!dateError}
-            helperText={dateError}
-            fullWidth={isMobile}
-            sx={{ minWidth: 200 }}
+            label="Data Fim" type="date" value={endDate} InputLabelProps={{ shrink: true }} error={!!dateError} helperText={dateError}
+            onChange={(e) => { setEndDate(e.target.value); validateDateYear(e.target.value); }} fullWidth={isMobile} sx={{ minWidth: 200 }}
           />
-          <Button 
-            variant="contained" 
-            startIcon={<Search />}
-            onClick={carregarRelatorios}
-            fullWidth={isMobile}
-            sx={{ height: 56, minWidth: 160 }}
-          >
+          <Button variant="contained" startIcon={<Search />} onClick={carregarRelatorios} fullWidth={isMobile} sx={{ height: 56, minWidth: 160 }}>
             Aplicar Filtro
           </Button>
         </Box>
       </Paper>
 
+      {/* BLOCO 1: RESUMO MACRO */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid size={{ xs: 12, sm: 6, md: 6 }}>
           <Card sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="text.secondary" variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                    Receita Total (Período)
-                  </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#10b981' }}>
-                    R$ {formatarDinheiroBR(totalRevenue)}
-                  </Typography>
+                  <Typography color="text.secondary" variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}> Receita Total (Período) </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#10b981' }}> R$ {formatarDinheiroBR(totalRevenue)} </Typography>
                 </Box>
                 <AttachMoney sx={{ color: '#10b981', fontSize: 48, opacity: 0.8 }} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
-
         <Grid size={{ xs: 12, sm: 6, md: 6 }}>
           <Card sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="text.secondary" variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                    Total de Vendas / Comandas
-                  </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#3b82f6' }}>
-                    {totalOrders}
-                  </Typography>
+                  <Typography color="text.secondary" variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}> Total de Vendas / Comandas </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#3b82f6' }}> {totalOrders} </Typography>
                 </Box>
                 <ShoppingCart sx={{ color: '#3b82f6', fontSize: 48, opacity: 0.8 }} />
               </Box>
@@ -282,33 +229,66 @@ export default function ReportsPage() {
         </Grid>
       </Grid>
 
+      {/* 🟢 BLOCO NOVO: RESUMO GERAL DE FORMAS DE PAGAMENTO */}
+      <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}> Fluxo de Caixa (Entradas) </Typography>
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid size={{ xs: 6, sm: 3 }}>
+          <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <Payments sx={{ color: '#10b981', fontSize: 20 }} />
+                <Typography variant="body2" color="text.secondary" fontWeight="bold">Dinheiro</Typography>
+              </Box>
+              <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(globalPaymentStats.dinheiro)}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 6, sm: 3 }}>
+          <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <QrCodeScanner sx={{ color: '#06b6d4', fontSize: 20 }} />
+                <Typography variant="body2" color="text.secondary" fontWeight="bold">PIX</Typography>
+              </Box>
+              <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(globalPaymentStats.pix)}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 6, sm: 3 }}>
+          <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <CreditCard sx={{ color: '#f59e0b', fontSize: 20 }} />
+                <Typography variant="body2" color="text.secondary" fontWeight="bold">Débito</Typography>
+              </Box>
+              <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(globalPaymentStats.debito)}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 6, sm: 3 }}>
+          <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <CreditCard sx={{ color: '#ef4444', fontSize: 20 }} />
+                <Typography variant="body2" color="text.secondary" fontWeight="bold">Crédito</Typography>
+              </Box>
+              <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(globalPaymentStats.credito)}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* BLOCO 2: GRÁFICOS */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 3, borderRadius: 2 }}>
-            <Typography variant="h6" sx={{ mb: 4, fontWeight: 'bold' }}>
-              Receita diária
-            </Typography>
+            <Typography variant="h6" sx={{ mb: 4, fontWeight: 'bold' }}> Receita diária </Typography>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={salesData} margin={{ top: 10, right: 30, left: 40, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-                <XAxis 
-                  dataKey="date" 
-                  stroke={theme.palette.text.secondary} 
-                  tickFormatter={formatarDataBR}
-                  style={{ fontSize: '12px' }} 
-                />
-                <YAxis 
-                  stroke={theme.palette.text.secondary} 
-                  tickFormatter={(value) => formatarDinheiroBR(value)} 
-                  width={90} 
-                  style={{ fontSize: '12px' }}
-                />
-                <Tooltip 
-                  labelFormatter={formatarDataBR}
-                  formatter={(value: number) => [`R$ ${formatarDinheiroBR(value)}`, 'Receita']}
-                  contentStyle={{ backgroundColor: theme.palette.background.paper, borderColor: theme.palette.divider }}
-                  itemStyle={{ color: theme.palette.text.primary }}
-                />
+                <XAxis dataKey="date" stroke={theme.palette.text.secondary} tickFormatter={formatarDataBR} style={{ fontSize: '12px' }} />
+                <YAxis stroke={theme.palette.text.secondary} tickFormatter={(value) => formatarDinheiroBR(value)} width={90} style={{ fontSize: '12px' }} />
+                <Tooltip labelFormatter={formatarDataBR} formatter={(value: number) => [`R$ ${formatarDinheiroBR(value)}`, 'Receita']} contentStyle={{ backgroundColor: theme.palette.background.paper, borderColor: theme.palette.divider }} itemStyle={{ color: theme.palette.text.primary }} />
                 <Legend wrapperStyle={{ paddingTop: '10px' }} />
                 <Bar dataKey="total" fill="#3b82f6" name="Receita" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -318,27 +298,13 @@ export default function ReportsPage() {
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 3, borderRadius: 2 }}>
-            <Typography variant="h6" sx={{ mb: 4, fontWeight: 'bold' }}>
-              Receita Mensal
-            </Typography>
+            <Typography variant="h6" sx={{ mb: 4, fontWeight: 'bold' }}> Receita Mensal </Typography>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={monthlyData} margin={{ top: 10, right: 30, left: 40, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-                <XAxis 
-                  dataKey="month" 
-                  stroke={theme.palette.text.secondary} 
-                  style={{ fontSize: '12px' }}
-                />
-                <YAxis 
-                  stroke={theme.palette.text.secondary}
-                  tickFormatter={(value) => formatarDinheiroBR(value)} 
-                  width={90} 
-                  style={{ fontSize: '12px' }}
-                />
-                <Tooltip 
-                  formatter={(value: number) => [`R$ ${formatarDinheiroBR(value)}`, 'Receita']}
-                  contentStyle={{ backgroundColor: theme.palette.background.paper, borderColor: theme.palette.divider }}
-                />
+                <XAxis dataKey="month" stroke={theme.palette.text.secondary} style={{ fontSize: '12px' }} />
+                <YAxis stroke={theme.palette.text.secondary} tickFormatter={(value) => formatarDinheiroBR(value)} width={90} style={{ fontSize: '12px' }} />
+                <Tooltip formatter={(value: number) => [`R$ ${formatarDinheiroBR(value)}`, 'Receita']} contentStyle={{ backgroundColor: theme.palette.background.paper, borderColor: theme.palette.divider }} />
                 <Legend wrapperStyle={{ paddingTop: '10px' }} />
                 <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} name="Receita" dot={{ r: 4 }} activeDot={{ r: 6 }} />
               </LineChart>
@@ -347,26 +313,17 @@ export default function ReportsPage() {
         </Grid>
       </Grid>
 
+      {/* BLOCO 3: LISTA DE PRODUTOS MAIS VENDIDOS */}
       <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ mb: 3, fontWeight: 'bold' }}>
-          Produtos Mais Vendidos
-        </Typography>
-
+        <Typography variant="h6" sx={{ mb: 3, fontWeight: 'bold' }}> Produtos Mais Vendidos </Typography>
         {isMobile ? (
           <Box display="flex" flexDirection="column" gap={2}>
             {productSales.map((item) => (
               <Card key={item.product} variant="outlined">
                 <CardContent sx={{ pb: '16px !important' }}>
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                    <Typography variant="subtitle1" fontWeight="bold" lineHeight={1.2}>
-                      {item.product}
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      sx={{ ml: 1, mt: -0.5 }}
-                      onClick={() => handleViewDetails(item)} // 🟢 Corrigido para abrir no Mobile
-                    >
+                    <Typography variant="subtitle1" fontWeight="bold" lineHeight={1.2}> {item.product} </Typography>
+                    <IconButton size="small" color="primary" sx={{ ml: 1, mt: -0.5 }} onClick={() => handleViewDetails(item)}>
                       <Info />
                     </IconButton>
                   </Box>
@@ -412,16 +369,10 @@ export default function ReportsPage() {
                   <TableRow key={item.product}>
                     <TableCell>{item.product}</TableCell>
                     <TableCell align="right">{item.quantity}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-                      R$ {formatarDinheiroBR(item.revenue)}
-                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 'bold', color: 'success.main' }}> R$ {formatarDinheiroBR(item.revenue)} </TableCell>
                     <TableCell align="center">
                       <MuiTooltip title="Ver detalhes de pagamento">
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={() => handleViewDetails(item)}
-                        >
+                        <IconButton size="small" color="primary" onClick={() => handleViewDetails(item)}>
                           <Info />
                         </IconButton>
                       </MuiTooltip>
@@ -439,12 +390,8 @@ export default function ReportsPage() {
           productName={selectedProduct.name}
           productCode={selectedProduct.code}
           totalRevenue={selectedProduct.revenue}
-          paymentStats={new Proxy(paymentStats, { 
-            get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 
-          })}
-          paymentUnits={new Proxy(paymentUnits, { 
-            get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 
-          })}
+          paymentStats={new Proxy(paymentStats, { get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 })}
+          paymentUnits={new Proxy(paymentUnits, { get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 })}
           onClose={() => setSelectedProduct(null)}
         />
       )}

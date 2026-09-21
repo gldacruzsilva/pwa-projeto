@@ -32,7 +32,6 @@ app.get('/relatorios/produtos', async (req, res) => {
     }
 });
 
-
 app.get('/relatorios/vendas', async (req, res) => {
     try {
         const [linhas] = await db.execute("SELECT codc, nick, valor_total, data_venda, status FROM Comanda ORDER BY data_venda DESC");
@@ -40,6 +39,24 @@ app.get('/relatorios/vendas', async (req, res) => {
     } catch (erro) { 
         console.error('Erro ao buscar relatório de vendas:', erro);
         res.status(500).json({ mensagem: 'Erro interno' }); 
+    }
+});
+
+app.get('/relatorios/pagamentos', async (req, res) => {
+    try {
+        const { inicio, fim } = req.query;
+        const sql = `
+            SELECT p.tipo_pagamento, SUM(p.valor) as total
+            FROM Pagamento p
+            JOIN Comanda c ON p.codc = c.codc
+            WHERE c.data_venda >= ? AND c.data_venda <= ?
+            GROUP BY p.tipo_pagamento
+        `;
+        const [results] = await db.execute(sql, [`${inicio} 00:00:00`, `${fim} 23:59:59`]);
+        res.status(200).json(results);
+    } catch (erro) { 
+        console.error('Erro ao buscar total de pagamentos:', erro);
+        res.status(500).json({ erro: 'Erro interno' }); 
     }
 });
 
@@ -151,20 +168,17 @@ app.delete('/auditoria/estoque', async (req, res) => {
 /* ==========================================
    ROTAS DE ESTOQUE E PRODUTOS
    ========================================== */
-// 1. Substitua a rota GET /produtos atual por esta (Filtra por status)
 app.get('/produtos', async (req, res) => {
     try {
         const { status } = req.query;
         let sql = 'SELECT codp, nome, preco_venda, preco_custo, qtde_estoque, lote, status FROM Produto';
         let params = [];
         
-        // Se a query vier com ?status=0 (Lixeira), traz os inativos. 
-        // Caso contrário, traz os ativos (status = 1) por padrão.
         if (status !== undefined && status !== 'all') {
             sql += ' WHERE status = ?';
             params.push(Number(status));
         } else {
-            sql += ' WHERE status = 1';
+            sql += ' WHERE status = 1 OR status IS NULL'; 
         }
         
         const [linhas] = await db.execute(sql, params);
@@ -175,12 +189,112 @@ app.get('/produtos', async (req, res) => {
     }
 });
 
-// 2. Substitua o DELETE /produtos/:id por este (Soft Delete)
+app.post('/produtos', async (req, res) => {
+    try {
+        let { codp, nome = '', preco_venda = 0, qtde_estoque = 0, preco_custo = 0, lote = '1', descricao = 'ENTRADA: Cadastro Inicial', codu = 1 } = req.body; 
+        
+        if (!nome || nome.trim() === '') return res.status(400).json({ mensagem: 'Nome do produto é obrigatório.' });
+        
+        // 🟢 BLOQUEIO INTELIGENTE: Bloqueia apenas se o código for igual mas o NOME for diferente!
+        if (codp) {
+            const [produtoExistente] = await db.execute('SELECT nome FROM Produto WHERE codp = ? LIMIT 1', [codp]);
+            
+            if (produtoExistente.length > 0) {
+                const nomeNoBanco = String(produtoExistente[0].nome).trim().toLowerCase();
+                const nomeNovo = String(nome).trim().toLowerCase();
+
+                if (nomeNoBanco !== nomeNovo) {
+                    return res.status(400).json({ 
+                        detalhe: `O código de barras "${codp}" já pertence ao produto "${produtoExistente[0].nome}". Use outro código para cadastrar a "${nome}".` 
+                    });
+                }
+            }
+        } else {
+            const [rows] = await db.execute('SELECT MAX(codp) as maxCod FROM Produto');
+            codp = (rows[0].maxCod || 0) + 1;
+        }
+
+        const sql = 'INSERT INTO Produto (codp, nome, preco_venda, qtde_estoque, preco_custo, lote, status) VALUES (?, ?, ?, ?, ?, ?, 1)';
+        await db.execute(sql, [codp, nome.trim(), Number(preco_venda ?? 0), Number(qtde_estoque ?? 0), Number(preco_custo ?? 0), lote]);
+        
+        const descSegura = (descricao || 'ENTRADA: Cadastro Inicial').substring(0, 40);
+        await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
+            [Number(qtde_estoque ?? 0), codp, Number(codu ?? 1), descSegura, lote]);
+
+        res.status(201).json({ mensagem: 'Produto cadastrado com sucesso!', codp: codp });
+    } catch (erro) {
+        console.error('Erro no POST /produtos:', erro);
+        if (erro.code === 'ER_DUP_ENTRY') return res.status(400).json({ detalhe: 'Este lote já existe no sistema para este produto!' });
+        res.status(500).json({ mensagem: 'Erro interno.', detalhe: erro.message });
+    }
+});
+
+app.put('/produtos/:id', async (req, res) => {
+    try {
+        const { id } = req.params; 
+        const { nome, preco, preco_venda, qtde_estoque, preco_custo, lote, lote_original, descricao = 'Movimentação', codu = 1 } = req.body; 
+
+        const [produtoAtual] = await db.execute(
+            'SELECT nome, preco_venda, qtde_estoque, preco_custo, lote FROM Produto WHERE codp = ? AND lote = ?', 
+            [id, lote_original ?? ''] 
+        );
+        
+        if (produtoAtual.length === 0) return res.status(404).json({ mensagem: 'Produto não encontrado no lote especificado.' });
+        
+        const p = produtoAtual[0];
+        
+        const nomeFinal = nome !== undefined ? nome : p.nome;
+        const qtdeFinal = qtde_estoque !== undefined ? qtde_estoque : p.qtde_estoque;
+        const custoFinal = preco_custo !== undefined ? preco_custo : p.preco_custo;
+        const loteFinal = lote !== undefined ? lote : p.lote;
+        const precoFinal = preco !== undefined ? preco : (preco_venda !== undefined ? preco_venda : p.preco_venda);
+
+        let textoAuditoria = descricao;
+        let registrarAuditoria = false;
+
+        if (qtdeFinal === p.qtde_estoque) {
+            let alteracoes = [];
+            if (nomeFinal !== p.nome) alteracoes.push(`${p.nome}->${nomeFinal}`);
+            if (Number(precoFinal) !== Number(p.preco_venda)) alteracoes.push(`R$${p.preco_venda}->${precoFinal}`);
+            
+            if (alteracoes.length > 0) {
+                textoAuditoria = `EDIT: ${alteracoes.join(' | ')}`;
+                registrarAuditoria = true; 
+            }
+        } else {
+            registrarAuditoria = true;
+        }
+
+        const sql = 'UPDATE Produto SET nome = ?, preco_venda = ?, qtde_estoque = ?, preco_custo = ?, lote = ? WHERE codp = ? AND lote = ?';
+        await db.execute(sql, [
+            nomeFinal ?? null, 
+            precoFinal ?? null, 
+            qtdeFinal ?? null, 
+            custoFinal ?? null, 
+            loteFinal ?? null, 
+            id, 
+            lote_original ?? ''
+        ]);
+        
+        if (registrarAuditoria) {
+            const descSegura = textoAuditoria.substring(0, 40);
+            await db.execute(
+                `INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)`, 
+                [qtdeFinal ?? null, id, codu ?? null, descSegura ?? null, loteFinal ?? null]
+            ); 
+        }
+
+        res.status(200).json({ mensagem: 'Produto atualizado!', id_atualizado: id });
+    } catch (erro) { 
+        console.error(`Erro no PUT /produtos/${req.params.id}:`, erro);
+        res.status(500).json({ mensagem: 'Erro interno.' }); 
+    }
+});
+
 app.delete('/produtos/:id', async (req, res) => {
     try {
         const { id } = req.params; 
         const { lote } = req.query;
-        // EXCLUSÃO LÓGICA: Em vez de apagar a linha, mudamos o status para 0
         const [resultado] = await db.execute('UPDATE Produto SET status = 0 WHERE codp = ? AND lote = ?', [id, lote]);
         
         if (resultado.affectedRows === 0) return res.status(404).json({ mensagem: 'Produto não encontrado.' });
@@ -191,12 +305,10 @@ app.delete('/produtos/:id', async (req, res) => {
     }
 });
 
-// 3. ADICIONE ESTA NOVA ROTA para reativar o produto
 app.put('/produtos/:id/reativar', async (req, res) => {
     try {
         const { id } = req.params;
         const { lote } = req.body;
-        // REATIVAÇÃO: Volta o status para 1
         const [resultado] = await db.execute('UPDATE Produto SET status = 1 WHERE codp = ? AND lote = ?', [id, lote]);
         
         if (resultado.affectedRows === 0) return res.status(404).json({ mensagem: 'Produto não encontrado.' });
@@ -206,6 +318,7 @@ app.put('/produtos/:id/reativar', async (req, res) => {
         res.status(500).json({ mensagem: 'Erro interno.' }); 
     }
 });
+
 /* ==========================================
    ROTAS DE ATIVOS
    ========================================== */
@@ -215,7 +328,6 @@ app.get('/bens', async (req, res) => {
         let sql = 'SELECT * FROM Ativo';
         let params = [];
 
-        // Se passar ?status=0 traz a lixeira, senão traz os ativos (status = 1 ou nulo caso BD não esteja atualizado)
         if (status !== undefined && status !== 'all') {
             sql += ' WHERE status = ?';
             params.push(Number(status));
@@ -232,7 +344,6 @@ app.get('/bens', async (req, res) => {
 });
 
 app.put('/bens/:id', async (req, res) => {
-    // ... MANTER O SEU PUT /bens/:id EXATAMENTE COMO VOCÊ MANDOU, NÃO MUDA NADA AQUI ...
     const coda = req.params.id;
     const { nome, qtde, valor, descricao, codu = 1 } = req.body;
     try {
@@ -278,7 +389,6 @@ app.post('/bens', async (req, res) => {
     const descSegura = descricao.substring(0, 38);
 
     try {
-        // MUDANÇA: Adicionado status = 1 no momento da criação
         const [resultado] = await db.execute(
             'INSERT INTO Ativo (qtde, valor, nome, status) VALUES (?, ?, ?, 1)', 
             [qtde ?? null, valor ?? null, nome ?? null]
@@ -298,7 +408,6 @@ app.post('/bens', async (req, res) => {
             });
         } catch (erroAuditoria) {
             try {
-                // Se a auditoria falhar, exclui direto (rollback real)
                 await db.execute('DELETE FROM Ativo WHERE coda = ?', [novoCoda]);
             } catch (erroRollback) {
                 console.error('Falha crítica ao deletar o ativo:', erroRollback);
@@ -311,7 +420,6 @@ app.post('/bens', async (req, res) => {
     }
 });
 
-// MUDANÇA: Soft Delete ao invés de Delete total
 app.delete('/bens/:id', async (req, res) => {
     try {
         const { id } = req.params; 
@@ -324,7 +432,6 @@ app.delete('/bens/:id', async (req, res) => {
     }
 });
 
-// NOVA ROTA: Reativar Ativo da Lixeira
 app.put('/bens/:id/reativar', async (req, res) => {
     try {
         const { id } = req.params;
@@ -336,6 +443,7 @@ app.put('/bens/:id/reativar', async (req, res) => {
         res.status(500).json({ mensagem: 'Erro interno ao reativar.' }); 
     }
 });
+
 /* ==========================================
    ROTAS DE COMANDAS E ITENS
    ========================================== */
@@ -415,7 +523,6 @@ app.get('/comandas/:id', async (req, res) => {
     }
 });
 
-// 🟢 INTELIGÊNCIA NOVA: ADD ITEM COM LOTE ESPECÍFICO
 app.post('/comandas/:id/itens', async (req, res) => {
     try {
         const { id } = req.params;
@@ -451,7 +558,6 @@ app.post('/comandas/:id/itens', async (req, res) => {
     }
 });
 
-// 🟢 INTELIGÊNCIA NOVA: ALTERAR QUANTIDADE DE UM LOTE ESPECÍFICO
 app.put('/comandas/:id/itens/:codp', async (req, res) => {
     try {
         const { id, codp } = req.params;
@@ -495,7 +601,6 @@ app.put('/comandas/:id/itens/:codp', async (req, res) => {
     }
 });
 
-// 🟢 INTELIGÊNCIA NOVA: DELETAR LOTE ESPECÍFICO INTEIRO
 app.delete('/comandas/:id/itens/:codp', async (req, res) => {
     try {
         const { id, codp } = req.params;
