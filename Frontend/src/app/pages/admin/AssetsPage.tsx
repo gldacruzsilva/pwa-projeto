@@ -325,7 +325,6 @@ export default function AssetsPage() {
                   </Box>
                   {isAdmin && (
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      {/* 🟢 BOTÃO DE EDITAR NO CELULAR DE VOLTA */}
                       <IconButton 
                         size="small" 
                         color="primary" 
@@ -383,7 +382,6 @@ export default function AssetsPage() {
                   </TableCell>
                   {isAdmin && (
                     <TableCell align="center">
-                      {/* 🟢 BOTÃO DE EDITAR NO PC DE VOLTA */}
                       <IconButton 
                         size="small" 
                         color="primary" 
@@ -419,15 +417,53 @@ export default function AssetsPage() {
         </TableContainer>
       )}
 
-      {/* DIALOG DE LIXEIRA */}
+      {/* DIALOG DE LIXEIRA (INATIVOS) */}
       <Dialog open={openTrashDialog} onClose={() => setOpenTrashDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <RestoreFromTrash color="action" /> Inativos
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ p: isMobile ? 2 : 3 }}>
           {trashAssets.length === 0 ? (
             <Alert severity="success">Nenhum ativo inativo no momento.</Alert>
+          ) : isMobile ? (
+            /* 🟢 VISUALIZAÇÃO EM CARDS NO CELULAR */
+            <Box display="flex" flexDirection="column" gap={2}>
+              {trashAssets.map((a, i) => (
+                <Card key={a.id || i} variant="outlined">
+                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight="bold" lineHeight={1.2}>
+                          {a.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Cód: {a.code}
+                        </Typography>
+                      </Box>
+                      <Box textAlign="right">
+                        <Typography variant="caption" color="text.secondary" display="block">Qtd</Typography>
+                        <Typography variant="body2" fontWeight="bold">{a.quantity} un</Typography>
+                      </Box>
+                    </Box>
+
+                    <Divider sx={{ my: 1.5 }} />
+
+                    <Button 
+                      variant="contained" 
+                      color="success" 
+                      size="small" 
+                      fullWidth 
+                      startIcon={<RestoreFromTrash />}
+                      onClick={() => handleRestore(a)}
+                    >
+                      Restaurar Ativo
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
           ) : (
+            /* 🟢 VISUALIZAÇÃO EM TABELA NO DESKTOP */
             <TableContainer>
               <Table size="small">
                 <TableHead>
@@ -456,7 +492,7 @@ export default function AssetsPage() {
             </TableContainer>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setOpenTrashDialog(false)}>Fechar Lixeira</Button>
         </DialogActions>
       </Dialog>

@@ -15,15 +15,13 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Button,
-  IconButton,
   Card,
   CardContent,
   Divider,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
-import { ExpandMore, Delete } from '@mui/icons-material';
+import { ExpandMore } from '@mui/icons-material';
 import { toast } from 'sonner';
 
 interface RegistroAuditoria {
@@ -48,7 +46,7 @@ export default function AuditHistoryPage() {
 
   // 🟢 Hooks para detectar celular
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md')); // Usa 'md' pois 8 colunas exigem bastante espaço
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const buscarAuditoria = async () => {
     try {
@@ -141,8 +139,6 @@ export default function AuditHistoryPage() {
 
   return (
     <Box>
-      
-
       <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4, borderRadius: 2 }}>
         {/* 🟢 FlexBox para empilhar os filtros no celular */}
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
@@ -181,9 +177,7 @@ export default function AuditHistoryPage() {
                       <Typography variant="body2" fontWeight="bold" color="text.secondary">
                         {formatarData(record.data)}
                       </Typography>
-                      <IconButton size="small" color="error" sx={{ mt: -0.5, mr: -1 }} onClick={() => handleDeleteRecord(record.codse, record.tipo_auditoria)}>
-                        <Delete fontSize="small" />
-                      </IconButton>
+                      {/* O botão de exclusão foi removido daqui */}
                     </Box>
 
                     <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
@@ -291,14 +285,13 @@ export default function AuditHistoryPage() {
                   minHeight: 'auto', 
                   p: 0, 
                   m: 0, 
-                  // 1. Alinha o conteúdo e o ícone juntos à esquerda
                   justifyContent: 'flex-start',
                   '& .MuiAccordionSummary-content': { 
                     m: 0,
-                    flexGrow: 0 // Impede que o texto ocupe todo o espaço e empurre a seta
+                    flexGrow: 0 
                   },
                   '& .MuiAccordionSummary-expandIconWrapper': {
-                    ml: 0.5 // Espaçamento pequeno entre o texto e a seta
+                    ml: 0.5 
                   }
                 }}
               >

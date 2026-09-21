@@ -25,7 +25,7 @@ const formatarMoedaBrasileira = (valor: number): string => {
   }).format(valor);
 };
 
-// 🟢 MUDANÇA AQUI: Caminho relativo para funcionar tanto no PC quanto no Celular
+// Caminho relativo para funcionar tanto no PC quanto no Celular
 const API_URL = '/api';
 
 export default function InventoryPage() {
@@ -177,6 +177,8 @@ export default function InventoryPage() {
           color="primary" 
           startIcon={<RestoreFromTrash />} 
           onClick={() => setOpenTrashDialog(true)}
+          fullWidth={isMobile}
+          sx={{ height: isMobile ? 48 : 'auto' }}
         >
           Produtos inativos
         </Button>
@@ -248,19 +250,28 @@ export default function InventoryPage() {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Código</TableCell><TableCell>Nome</TableCell><TableCell align="center">Lote</TableCell>
-                <TableCell align="center">Quantidade</TableCell><TableCell align="center">Preço de custo</TableCell>
-                <TableCell align="center">Preço de venda</TableCell><TableCell align="center">Total (Estoque)</TableCell>
+                <TableCell>Código</TableCell>
+                <TableCell>Nome</TableCell>
+                <TableCell align="center">Lote</TableCell>
+                <TableCell align="center">Quantidade</TableCell>
+                <TableCell align="center">Preço de custo</TableCell>
+                <TableCell align="center">Preço de venda</TableCell>
+                <TableCell align="center">Total (Estoque)</TableCell>
                 <TableCell align="center">Ações</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {products.map((product) => (
                 <TableRow key={`${product.id}-${product.batch}`}>
-                  <TableCell>{product.code}</TableCell><TableCell>{product.name}</TableCell>
-                  <TableCell align="center">{product.batch}</TableCell><TableCell align="center">{product.quantity}</TableCell>
-                  <TableCell align="center">{formatarMoedaBrasileira(product.costPrice)}</TableCell><TableCell align="center">{formatarMoedaBrasileira(product.price)}</TableCell>
-                  <TableCell align="center" className="text-green-600 dark:text-green-400 font-medium">{formatarMoedaBrasileira(product.quantity * product.costPrice)}</TableCell>
+                  <TableCell>{product.code}</TableCell>
+                  <TableCell>{product.name}</TableCell>
+                  <TableCell align="center">{product.batch}</TableCell>
+                  <TableCell align="center">{product.quantity}</TableCell>
+                  <TableCell align="center">{formatarMoedaBrasileira(product.costPrice)}</TableCell>
+                  <TableCell align="center">{formatarMoedaBrasileira(product.price)}</TableCell>
+                  <TableCell align="center" className="text-green-600 dark:text-green-400 font-medium">
+                    {formatarMoedaBrasileira(product.quantity * product.costPrice)}
+                  </TableCell>
                   <TableCell align="center">
                     <IconButton size="small" color="primary" onClick={() => handleOpenDialog(product)}><Edit /></IconButton>
                     <IconButton size="small" color="error" onClick={() => handleOpenDeleteDialog(product)}><Delete /></IconButton>
@@ -289,7 +300,7 @@ export default function InventoryPage() {
           <Box display="flex" flexDirection="column" gap={3} mt={1}>
             <TextField fullWidth label="Código de Barras (ID)" value={formData.code} disabled />
             <TextField fullWidth label="Nome do Produto" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
-            <Box display="flex" gap={2}>
+            <Box display="flex" gap={2} flexDirection={isMobile ? 'column' : 'row'}>
               <TextField fullWidth label="Lote Atual" value={formData.batch} disabled />
               <TextField fullWidth label="Preço de Custo (R$)" type="number" value={formData.costPrice} disabled />
             </Box>
@@ -297,7 +308,7 @@ export default function InventoryPage() {
             <TextField fullWidth label="Preço de Comanda (R$)" type="number" inputProps={{ step: '0.01' }} value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} required />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2 }}>
           <Button onClick={handleCloseDialog}>Cancelar</Button>
           <Button onClick={handleSave} variant="contained">Salvar Alterações</Button>
         </DialogActions>
@@ -318,20 +329,59 @@ export default function InventoryPage() {
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2 }}>
           <Button onClick={handleCloseDeleteDialog}>Cancelar</Button>
           <Button onClick={handleDelete} variant="contained" color="error">Excluir</Button>
         </DialogActions>
       </Dialog>
 
+      {/* DIALOG DE LIXEIRA (INATIVOS) */}
       <Dialog open={openTrashDialog} onClose={() => setOpenTrashDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <RestoreFromTrash color="action" /> Produtos inativos
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ p: isMobile ? 2 : 3 }}>
           {trashProducts.length === 0 ? (
             <Alert severity="success">Nenhum produto inativo no momento.</Alert>
+          ) : isMobile ? (
+            /* 🟢 VISUALIZAÇÃO EM CARDS NO CELULAR */
+            <Box display="flex" flexDirection="column" gap={2}>
+              {trashProducts.map((p, i) => (
+                <Card key={p.id || i} variant="outlined">
+                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight="bold" lineHeight={1.2}>
+                          {p.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Cód: {p.code} | Lote: {p.batch}
+                        </Typography>
+                      </Box>
+                      <Box textAlign="right">
+                        <Typography variant="caption" color="text.secondary" display="block">Estoque Retido</Typography>
+                        <Typography variant="body2" fontWeight="bold">{p.quantity} un</Typography>
+                      </Box>
+                    </Box>
+
+                    <Divider sx={{ my: 1.5 }} />
+
+                    <Button 
+                      variant="contained" 
+                      color="success" 
+                      size="small" 
+                      fullWidth 
+                      startIcon={<RestoreFromTrash />}
+                      onClick={() => handleRestore(p)}
+                    >
+                      Restaurar Produto
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
           ) : (
+            /* 🟢 VISUALIZAÇÃO EM TABELA NO DESKTOP */
             <TableContainer>
               <Table size="small">
                 <TableHead>
@@ -367,11 +417,10 @@ export default function InventoryPage() {
             </TableContainer>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setOpenTrashDialog(false)}>Fechar Lixeira</Button>
         </DialogActions>
       </Dialog>
-
     </Box>
   );
 }
