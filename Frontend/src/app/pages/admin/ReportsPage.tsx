@@ -6,7 +6,8 @@ import {
 } from '@mui/material';
 import {
   ShoppingCart, AttachMoney, Info, Search,
-  Payments, CreditCard, QrCodeScanner
+  Payments, CreditCard, QrCodeScanner,
+  HelpOutline
 } from '@mui/icons-material';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import ProductPaymentDetailsDialog from '../../components/admin/ProductPaymentDetailsDialog';
@@ -44,7 +45,12 @@ export default function ReportsPage() {
   const [productSales, setProductSales] = useState<any[]>([]);
 
   // 🟢 NOVO ESTADO: Armazena o resumo global do caixa
-  const [globalPaymentStats, setGlobalPaymentStats] = useState({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
+  const [globalPaymentStats, setGlobalPaymentStats] = useState<Record<string, number>>({
+    Dinheiro: 0,
+    Débito: 0,
+    Crédito: 0,
+    PIX: 0,
+  });
 
   const [selectedProduct, setSelectedProduct] = useState<{ code: string; name: string; revenue: number; } | null>(null);
   const [paymentStats, setPaymentStats] = useState<any>({ dinheiro: 0, debito: 0, credito: 0, pix: 0 });
@@ -157,13 +163,16 @@ export default function ReportsPage() {
         const pagRes = await fetch(`/api/relatorios/pagamentos?inicio=${startDate}&fim=${endDate}`);
         if (pagRes.ok) {
           const pagData = await pagRes.json();
-          const stats = { dinheiro: 0, debito: 0, credito: 0, pix: 0 };
+          const stats: Record<string, number> = {
+            Dinheiro: 0,
+            Débito: 0,
+            Crédito: 0,
+            PIX: 0,
+          };
           pagData.forEach((p: any) => {
-            const tipo = p.tipo_pagamento ? p.tipo_pagamento.toLowerCase() : '';
-            if (tipo.includes('dinheiro')) stats.dinheiro += Number(p.total);
-            else if (tipo.includes('debito') || tipo.includes('débito')) stats.debito += Number(p.total);
-            else if (tipo.includes('credito') || tipo.includes('crédito')) stats.credito += Number(p.total);
-            else if (tipo.includes('pix')) stats.pix += Number(p.total);
+            if (typeof p.tipo_pagamento === 'string') {
+              stats[p.tipo_pagamento] = Number(p.total);
+            }
           });
           setGlobalPaymentStats(stats);
         }
@@ -181,9 +190,22 @@ export default function ReportsPage() {
   return (
     <Box>
       <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4, borderRadius: 2 }}>
-        <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', fontWeight: 'bold' }}>
-          Filtrar Período
-        </Typography>
+        {/* 🟢 ÍCONE COLADINHO AO TÍTULO */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 'bold', mb: 0 }}>
+            Filtrar Período
+          </Typography>
+          <MuiTooltip 
+            title="Consulte os resultados de vendas, o fluxo de caixa detalhado e o desempenho dos produtos em um período específico." 
+            arrow 
+            placement="right"
+          >
+            <IconButton size="small" sx={{ color: 'text.secondary', p: 0.5 }}>
+              <HelpOutline fontSize="small" />
+            </IconButton>
+          </MuiTooltip>
+        </Box>
+
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3, alignItems: { xs: 'stretch', sm: 'flex-start' } }}>
           <TextField
             label="Data Início" type="date" value={startDate} InputLabelProps={{ shrink: true }} error={!!dateError}
@@ -219,7 +241,7 @@ export default function ReportsPage() {
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
-                  <Typography color="text.secondary" variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}> Total de Vendas / Comandas </Typography>
+                  <Typography color="text.secondary" variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}> Total de Comandas </Typography>
                   <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#3b82f6' }}> {totalOrders} </Typography>
                 </Box>
                 <ShoppingCart sx={{ color: '#3b82f6', fontSize: 48, opacity: 0.8 }} />
@@ -230,52 +252,30 @@ export default function ReportsPage() {
       </Grid>
 
       {/* 🟢 BLOCO NOVO: RESUMO GERAL DE FORMAS DE PAGAMENTO */}
-      <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}> Fluxo de Caixa (Entradas) </Typography>
+      <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}> Fluxo de Caixa </Typography>
       <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 6, sm: 3 }}>
-          <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Payments sx={{ color: '#10b981', fontSize: 20 }} />
-                <Typography variant="body2" color="text.secondary" fontWeight="bold">Dinheiro</Typography>
-              </Box>
-              <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(globalPaymentStats.dinheiro)}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
-          <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <QrCodeScanner sx={{ color: '#06b6d4', fontSize: 20 }} />
-                <Typography variant="body2" color="text.secondary" fontWeight="bold">PIX</Typography>
-              </Box>
-              <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(globalPaymentStats.pix)}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
-          <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <CreditCard sx={{ color: '#f59e0b', fontSize: 20 }} />
-                <Typography variant="body2" color="text.secondary" fontWeight="bold">Débito</Typography>
-              </Box>
-              <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(globalPaymentStats.debito)}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
-          <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <CreditCard sx={{ color: '#ef4444', fontSize: 20 }} />
-                <Typography variant="body2" color="text.secondary" fontWeight="bold">Crédito</Typography>
-              </Box>
-              <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(globalPaymentStats.credito)}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+        {Object.entries(globalPaymentStats).map(([method, total]) => {
+          const normalizedMethod = method.toLocaleLowerCase('pt-BR');
+          const icon = normalizedMethod.includes('pix')
+            ? <QrCodeScanner sx={{ color: '#06b6d4', fontSize: 20 }} />
+            : normalizedMethod.includes('dinheiro')
+              ? <Payments sx={{ color: '#10b981', fontSize: 20 }} />
+              : <CreditCard sx={{ color: '#f59e0b', fontSize: 20 }} />;
+
+          return (
+            <Grid key={method} size={{ xs: 6, sm: 3 }}>
+              <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'divider' }}>
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Box display="flex" alignItems="center" gap={1} mb={1}>
+                    {icon}
+                    <Typography variant="body2" color="text.secondary" fontWeight="bold">{method}</Typography>
+                  </Box>
+                  <Typography variant="h6" fontWeight="bold">R$ {formatarDinheiroBR(total)}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
       </Grid>
 
       {/* BLOCO 2: GRÁFICOS */}
@@ -390,8 +390,8 @@ export default function ReportsPage() {
           productName={selectedProduct.name}
           productCode={selectedProduct.code}
           totalRevenue={selectedProduct.revenue}
-          paymentStats={new Proxy(paymentStats, { get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 })}
-          paymentUnits={new Proxy(paymentUnits, { get: (target, prop) => prop in target ? target[prop as keyof typeof target] : 0 })}
+          paymentStats={paymentStats}
+          paymentUnits={paymentUnits}
           onClose={() => setSelectedProduct(null)}
         />
       )}

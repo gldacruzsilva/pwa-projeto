@@ -31,6 +31,8 @@ DB_NAME=banco_campo
 
 > Verifique se a senha e o nome do banco estão corretos no seu ambiente antes de iniciar o backend.
 
+Para criar um banco novo, importe `Banco de dados/banco_campo.sql`. Se estiver atualizando uma instalação que ainda usa a coluna `Pagamento.tipo_pagamento`, execute uma única vez `Banco de dados/migracao_tipo_pagamento.sql` antes de iniciar o backend atualizado.
+
 ---
 
 ## 2) Abrir o projeto

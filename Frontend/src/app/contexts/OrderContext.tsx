@@ -12,19 +12,19 @@ export interface OrderItem {
   quantity: number;
 }
 
-export interface PaymentMethodStat {
+export type PaymentMethodStat = Record<string, number> & {
   dinheiro: number;
   debito: number;
   credito: number;
   pix: number;
-}
+};
 
-export interface PaymentMethodUnits {
+export type PaymentMethodUnits = Record<string, number> & {
   dinheiro: number;
   debito: number;
   credito: number;
   pix: number;
-}
+};
 
 export interface Order {
   id: number;
@@ -188,10 +188,8 @@ export function OrderProvider({ children }: { children: ReactNode }) {
 
       order.payments.forEach(payment => {
         const itemPayment = payment.amount * itemProportion;
-        const method = payment.method as keyof PaymentMethodStat;
-        if (stats[method] !== undefined) {
-          stats[method] += itemPayment;
-        }
+        const method = payment.method.toLocaleLowerCase('pt-BR');
+        stats[method] = (stats[method] || 0) + itemPayment;
       });
     });
 
@@ -216,10 +214,8 @@ export function OrderProvider({ children }: { children: ReactNode }) {
 
       order.payments.forEach(payment => {
         const unitsForPayment = orderItem.quantity * (payment.amount / orderTotal);
-        const method = payment.method as keyof PaymentMethodUnits;
-        if (units[method] !== undefined) {
-          units[method] += unitsForPayment;
-        }
+        const method = payment.method.toLocaleLowerCase('pt-BR');
+        units[method] = (units[method] || 0) + unitsForPayment;
       });
     });
 

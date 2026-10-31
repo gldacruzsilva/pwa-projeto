@@ -5,7 +5,7 @@ import {
   TableBody, TableCell, TableContainer, TableHead, TableRow,
   Card, CardContent, Alert, IconButton, CircularProgress
 } from '@mui/material';
-import { CreditCard, AttachMoney, QrCode2, Delete, CheckCircle } from '@mui/icons-material';
+import { CreditCard, AttachMoney, QrCode2, Delete, CheckCircle, Add } from '@mui/icons-material';
 import { toast } from 'sonner';
  
 interface PaymentDialogProps {
@@ -16,14 +16,25 @@ interface PaymentDialogProps {
 
 interface PaymentRecord {
   id: number;
+  codtp: number;
   method: string;
   amount: number;
+}
+
+interface PaymentType {
+  codtp: number;
+  descricao: string;
 }
 
 export default function PaymentDialog({ orderId, onClose, onOrderClosed }: PaymentDialogProps) {
   const [order, setOrder] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'debito' | 'credito' | 'pix'>('dinheiro');
+  const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
+  const [isLoadingPaymentTypes, setIsLoadingPaymentTypes] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState<number | null>(null);
+  const [isAddingPaymentType, setIsAddingPaymentType] = useState(false);
+  const [newPaymentType, setNewPaymentType] = useState('');
+  const [isSavingPaymentType, setIsSavingPaymentType] = useState(false);
   const [amount, setAmount] = useState('');
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
 
@@ -44,9 +55,41 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
       });
   }, [orderId]);
 
-  const getMethodLabel = (method: string) => {
-    const labels: Record<string, string> = { dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito', pix: 'PIX' };
-    return labels[method] || method;
+  useEffect(() => {
+    let active = true;
+    fetch('/api/tipos-pagamento')
+      .then(async (response) => {
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error('Não foi possível carregar as formas de pagamento. Reinicie o backend para aplicar as alterações.');
+        }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.mensagem || 'Erro ao carregar formas de pagamento.');
+        if (!Array.isArray(data)) throw new Error('A resposta das formas de pagamento é inválida.');
+        if (!active) return;
+
+        const types: PaymentType[] = data;
+        setPaymentTypes(types);
+        const preferredType = types.find((type) => type.descricao.toLocaleLowerCase('pt-BR') === 'dinheiro') || types[0];
+        setPaymentMethod(preferredType?.codtp ?? null);
+      })
+      .catch((error) => {
+        if (active) {
+          toast.error(error instanceof Error ? error.message : 'Erro ao carregar formas de pagamento.');
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoadingPaymentTypes(false);
+      });
+
+    return () => { active = false; };
+  }, []);
+
+  const getMethodIcon = (description: string) => {
+    const normalized = description.toLocaleLowerCase('pt-BR');
+    if (normalized.includes('dinheiro')) return <AttachMoney sx={{ mr: 1, fontSize: 20 }} />;
+    if (normalized.includes('pix')) return <QrCode2 sx={{ mr: 1, fontSize: 20 }} />;
+    return <CreditCard sx={{ mr: 1, fontSize: 20 }} />;
   };
 
   const total = order ? (Number(order.valor_total) || 0) : 0;
@@ -58,6 +101,9 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
   const remaining = Math.round((total - totalPaid) * 100) / 100;
 
   const handleAddPayment = () => {
+    const selectedType = paymentTypes.find((type) => type.codtp === paymentMethod);
+    if (!selectedType) return toast.error('Selecione uma forma de pagamento.');
+
     // 🟢 Aceita caso o usuário digite com vírgula em vez de ponto
     const amountStr = String(amount).replace(',', '.');
     const amountValue = parseFloat(amountStr);
@@ -68,13 +114,15 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
     const valorEmCentavos = Math.round(amountValue * 100);
     const restanteEmCentavos = Math.round(remaining * 100);
 
-    if (valorEmCentavos > restanteEmCentavos && paymentMethod !== 'dinheiro') {
+    const isCashPayment = selectedType.descricao.toLocaleLowerCase('pt-BR') === 'dinheiro';
+    if (valorEmCentavos > restanteEmCentavos && !isCashPayment) {
       return toast.error('Valor maior que o restante permitido apenas em Dinheiro (Cálculo de Troco).');
     }
 
     const newPayment: PaymentRecord = {
       id: payments.length > 0 ? Math.max(...payments.map(p => p.id)) + 1 : 1,
-      method: paymentMethod,
+      codtp: selectedType.codtp,
+      method: selectedType.descricao,
       amount: amountValue,
     };
 
@@ -86,18 +134,59 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
     setPayments(payments.filter(p => p.id !== id));
   };
 
+  const handleCreatePaymentType = async () => {
+    const description = newPaymentType.trim();
+    if (!description) return toast.error('Informe o nome da nova forma de pagamento.');
+    if (description.length > 45) return toast.error('O nome deve ter no máximo 45 caracteres.');
+
+    setIsSavingPaymentType(true);
+    try {
+      const response = await fetch('/api/tipos-pagamento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descricao: description }),
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('A API não reconheceu o cadastro de formas de pagamento. Reinicie o backend e tente novamente.');
+      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.mensagem || 'Não foi possível cadastrar a forma de pagamento.');
+
+      const createdType: PaymentType = { codtp: Number(result.codtp), descricao: result.descricao };
+      if (!Number.isInteger(createdType.codtp) || !createdType.descricao) {
+        throw new Error('O backend retornou dados inválidos para a forma de pagamento.');
+      }
+      setPaymentTypes((currentTypes) => [...currentTypes, createdType]);
+      setPaymentMethod(createdType.codtp);
+      setNewPaymentType('');
+      setIsAddingPaymentType(false);
+      toast.success('Forma de pagamento adicionada.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao cadastrar forma de pagamento.');
+    } finally {
+      setIsSavingPaymentType(false);
+    }
+  };
+
   const handleConfirm = async () => {
     if (payments.length === 0) return toast.error('Adicione pelo menos um pagamento na lista');
 
     try {
-      await fetch(`/api/comandas/${orderId}/pagamentos`, {
+      const response = await fetch(`/api/comandas/${orderId}/pagamentos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pagamentos: payments })
       });
+      if (!(response.headers.get('content-type') || '').includes('application/json')) {
+        throw new Error('Resposta inválida da API de pagamentos. Reinicie o backend e tente novamente.');
+      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.mensagem || 'Não foi possível registrar os pagamentos.');
 
       if (remaining <= 0) {
-        await fetch(`/api/comandas/${orderId}/fechar`, { method: 'PUT' });
+        const closeResponse = await fetch(`/api/comandas/${orderId}/fechar`, { method: 'PUT' });
+        if (!closeResponse.ok) throw new Error('Pagamento registrado, mas não foi possível fechar a comanda.');
         toast.success('Pagamento e fechamento realizados com sucesso');
         
         if (onOrderClosed) {
@@ -110,7 +199,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
         onClose(); 
       }
     } catch (error) {
-      toast.error('Erro de conexão ao registrar pagamentos.');
+      toast.error(error instanceof Error ? error.message : 'Erro de conexão ao registrar pagamentos.');
     }
   };
   
@@ -144,13 +233,60 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
                 exclusive
                 onChange={(_, value) => value && setPaymentMethod(value)}
                 fullWidth
-                sx={{ mb: 3, '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 500 } }}
+                sx={{
+                  mb: 3,
+                  flexWrap: 'wrap',
+                  '& .MuiToggleButton-root': {
+                    flex: '1 1 50%',
+                    maxWidth: '50%',
+                    textTransform: 'none',
+                    fontWeight: 500,
+                  },
+                }}
               >
-                <ToggleButton value="dinheiro"><AttachMoney sx={{ mr: 1, fontSize: 20 }} /> Dinheiro</ToggleButton>
-                <ToggleButton value="debito"><CreditCard sx={{ mr: 1, fontSize: 20 }} /> Débito</ToggleButton>
-                <ToggleButton value="credito"><CreditCard sx={{ mr: 1, fontSize: 20 }} /> Crédito</ToggleButton>
-                <ToggleButton value="pix"><QrCode2 sx={{ mr: 1, fontSize: 20 }} /> PIX</ToggleButton>
+                {paymentTypes.map((type) => (
+                  <ToggleButton key={type.codtp} value={type.codtp} disabled={isLoadingPaymentTypes}>
+                    {getMethodIcon(type.descricao)} {type.descricao}
+                  </ToggleButton>
+                ))}
               </ToggleButtonGroup>
+
+              {paymentTypes.length === 0 && !isLoadingPaymentTypes && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Cadastre uma forma de pagamento antes de registrar o recebimento.
+                </Alert>
+              )}
+
+              <Box sx={{ mb: 2 }}>
+                <Button
+                  size="small"
+                  startIcon={<Add />}
+                  onClick={() => setIsAddingPaymentType((isAdding) => !isAdding)}
+                  sx={{ textTransform: 'none' }}
+                >
+                  {isAddingPaymentType ? 'Cancelar nova forma' : 'Adicionar forma'}
+                </Button>
+                {isAddingPaymentType && (
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Nova forma de pagamento"
+                      value={newPaymentType}
+                      onChange={(event) => setNewPaymentType(event.target.value)}
+                      inputProps={{ maxLength: 45 }}
+                    />
+                    <Button
+                      variant="outlined"
+                      onClick={handleCreatePaymentType}
+                      disabled={isSavingPaymentType || !newPaymentType.trim()}
+                      sx={{ whiteSpace: 'nowrap', textTransform: 'none' }}
+                    >
+                      {isSavingPaymentType ? <CircularProgress size={20} /> : 'Salvar'}
+                    </Button>
+                  </Box>
+                )}
+              </Box>
 
               <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
                 <TextField
@@ -178,7 +314,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
                 variant="contained"
                 disableElevation
                 onClick={handleAddPayment}
-                disabled={!amount || parseFloat(amount.replace(',', '.')) <= 0}
+                disabled={!amount || parseFloat(amount.replace(',', '.')) <= 0 || paymentMethod === null || isLoadingPaymentTypes}
                 sx={{ py: 1.5, borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
               >
                 Adicionar à Lista de Pagamentos
@@ -205,7 +341,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
                   <TableBody>
                     {payments.map((payment) => (
                       <TableRow key={payment.id}>
-                        <TableCell>{getMethodLabel(payment.method)}</TableCell>
+                        <TableCell>{payment.method}</TableCell>
                         <TableCell align="right">R$ {payment.amount.toFixed(2)}</TableCell>
                         <TableCell align="center">
                           <IconButton size="small" color="error" onClick={() => handleRemovePayment(payment.id)}>

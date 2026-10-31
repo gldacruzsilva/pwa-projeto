@@ -3,9 +3,10 @@ import {
   Box, TextField, Button, Paper, Typography, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, IconButton, Alert, Autocomplete, 
   Dialog, DialogTitle, DialogContent, DialogActions, MenuItem,
-  Card, CardContent, useMediaQuery, useTheme 
+  Card, CardContent, useMediaQuery, useTheme, 
+  Tooltip
 } from '@mui/material';
-import { Add, Delete, AddCircleOutline } from '@mui/icons-material';
+import { Add, Delete, AddCircleOutline, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
 
 export default function StockReceiptPage() {
@@ -245,20 +246,50 @@ export default function StockReceiptPage() {
   };
 
   return (
-    <Box>
-       <Box display="flex" justifyContent="flex-start" alignItems="center" mb={4}>
-        <Button variant="outlined" startIcon={<AddCircleOutline />} onClick={() => setModalOpen(true)}> 
-          Cadastrar Novo Produto 
-        </Button>
-      </Box>
-
+    <>
       <Paper sx={{ p: { xs: 2, sm: 4 }, mb: 4, borderRadius: 2 }}>
-        <Alert severity="info" sx={{ mb: 4 }}>
-          Adicione os produtos abaixo e defina na tabela se deseja registrar uma entrada ou saída de estoque.
-        </Alert>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            Movimentação de Estoque
+          </Typography>
+          <Tooltip 
+            title="Adicione os produtos abaixo e defina na tabela se deseja registrar uma entrada ou saída de estoque." 
+            arrow 
+            placement="right"
+          >
+            <IconButton size="small" sx={{ color: 'text.secondary', p: 0.5 }}>
+              <HelpOutline fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+
+        {/* 🟢 BOTÃO MOVIDO PARA CÁ COM ANIMAÇÃO */}
+        <Box mb={4} display="flex" justifyContent="flex-start">
+          <Button 
+            variant="outlined" 
+            startIcon={<AddCircleOutline />} 
+            onClick={() => setModalOpen(true)}
+            sx={{
+              transition: 'all 0.2s ease-in-out',
+              '&:hover': {
+                backgroundColor: 'primary.main',
+                color: 'white',
+                transform: 'scale(1.02)',
+                boxShadow: 2,
+              },
+              '&:active': {
+                transform: 'scale(0.95)',
+              }
+            }}
+          > 
+            Cadastrar Novo Produto 
+          </Button>
+        </Box>
 
         <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', fontWeight: 'bold' }}> Adicionar por Código </Typography>
         <form onSubmit={handleBarcodeSubmit}>
+
           <Box display="flex" gap={2} mb={4} flexDirection={{ xs: 'column', sm: 'row' }}>
             <TextField fullWidth label="Código do Produto" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
             <Button type="submit" variant="contained" startIcon={<Add />} sx={{ height: 56, minWidth: { sm: 160 }, flexShrink: 0 }} fullWidth={isMobile}> 
@@ -283,7 +314,7 @@ export default function StockReceiptPage() {
         </Box>
       </Paper>
 
-      {receiptItems.length > 0 && (
+    {receiptItems.length > 0 && (
         <Paper sx={{ p: { xs: 2, sm: 4 } }}>
           
           {isMobile ? (
@@ -487,6 +518,6 @@ export default function StockReceiptPage() {
           <Button variant="contained" onClick={handleCadastrarNovoProduto}>Salvar</Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

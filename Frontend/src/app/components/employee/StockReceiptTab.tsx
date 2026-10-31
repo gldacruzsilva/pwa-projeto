@@ -66,7 +66,7 @@ export default function StockReceiptTab() {
         setModalOpen(false);
         setNovoProduto({ codp: '', nome: '', preco: '', preco_custo: '', lote: '1' });
         buscarProdutos();
-      } else { toast.error('Falha ao cadastrar produto.'); }
+      } else { toast.error('Falha ao cadastrar produto. Verifique o código de barras.'); }
     } catch (erro) { toast.error('Erro de conexão.'); }
   };
 

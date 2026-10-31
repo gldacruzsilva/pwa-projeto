@@ -6,6 +6,7 @@ import InventoryPage from "./pages/admin/InventoryPage";
 import StockReceiptPage from "./pages/admin/StockReceiptPage";
 import AssetsPage from "./pages/admin/AssetsPage";
 import ReportsPage from "./pages/admin/ReportsPage";
+import DailyReportPage from "./pages/admin/DailyReportPage";
 import AuditHistoryPage from "./pages/admin/AuditHistoryPage";
 import SalesPage from "./pages/employee/SalesPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
       { path: "movimentacao", Component: StockReceiptPage }, // Admin usa a Page
       { path: "ativos", Component: AssetsPage },
       { path: "relatorios", Component: ReportsPage },
+      { path: "relatorio-diario", Component: DailyReportPage },
       { path: "auditoria", Component: AuditHistoryPage },
     ],
   },

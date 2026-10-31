@@ -24,9 +24,10 @@ import {
   useTheme,
   useMediaQuery,
   Autocomplete,
-  MenuItem
+  MenuItem,
+  Tooltip
 } from '@mui/material';
-import { Edit, Delete, SwapHoriz, AddCircleOutline, RestoreFromTrash } from '@mui/icons-material';
+import { Edit, Delete, SwapHoriz, AddCircleOutline, RestoreFromTrash, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
 
 interface Asset {
@@ -275,7 +276,25 @@ export default function AssetsPage() {
   const totalValue = assets.reduce((acc, asset) => acc + (Number(asset.quantity) * Number(asset.value)), 0);
 
   return (
+   
     <Box>
+      {/* 🟢 CABEÇALHO COM TÍTULO E ÍCONE DE AJUDA */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+        <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+          Gestão de Ativos
+        </Typography>
+        <Tooltip 
+          title="Ativos representam os bens físicos e o patrimônio da empresa (ex: equipamentos, móveis, ferramentas). Use esta aba para gerenciar esse inventário, controlando o valor investido, cadastrando novos bens ou registrando baixas." 
+          arrow 
+          placement="right"
+        >
+          <IconButton size="small" sx={{ color: 'text.secondary', p: 0.5 }}>
+            <HelpOutline fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      {/* 🟢 BOTÕES DE AÇÃO */}
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mb: 4 }}>
         {isAdmin ? (
           <>
@@ -418,10 +437,24 @@ export default function AssetsPage() {
       )}
 
       {/* DIALOG DE LIXEIRA (INATIVOS) */}
+      {/* DIALOG DE LIXEIRA (INATIVOS) */}
       <Dialog open={openTrashDialog} onClose={() => setOpenTrashDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
+        
+        {/* 🟢 ÍCONE DE AJUDA ADICIONADO AQUI NO CABEÇALHO DO MODAL */}
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <RestoreFromTrash color="action" /> Inativos
+          
+          <Tooltip 
+            title="Inativar um ativo oculta-o das listagens do patrimônio, mas preserva seu histórico de movimentações. Clique em restaurar para devolvê-lo à lista principal." 
+            arrow 
+            placement="bottom"
+          >
+            <IconButton size="small" sx={{ ml: 'auto' }}>
+              <HelpOutline fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </DialogTitle>
+
         <DialogContent dividers sx={{ p: isMobile ? 2 : 3 }}>
           {trashAssets.length === 0 ? (
             <Alert severity="success">Nenhum ativo inativo no momento.</Alert>

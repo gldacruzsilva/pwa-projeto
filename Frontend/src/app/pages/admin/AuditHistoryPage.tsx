@@ -20,8 +20,11 @@ import {
   Divider,
   useTheme,
   useMediaQuery,
+  InputAdornment,
+  Tooltip,
+  IconButton,
 } from '@mui/material';
-import { ExpandMore } from '@mui/icons-material';
+import { ExpandMore, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
 
 interface RegistroAuditoria {
@@ -144,11 +147,27 @@ export default function AuditHistoryPage() {
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
           <TextField 
             fullWidth 
-            label="Buscar por Produto, Lote, Código ou Usuário" 
+            label="Buscar por Produto ou Usuário" 
             value={searchTerm} 
             onChange={(e) => setSearchTerm(e.target.value)} 
             placeholder="Digite para filtrar..." 
             sx={{ flexGrow: 1 }}
+            // 🟢 ÍCONE DE INTERROGAÇÃO INSERIDO AQUI DENTRO DO INPUT
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Tooltip 
+                    title="A auditoria mantém o histórico de todas as movimentações de estoque e alterações de ativos, permitindo rastrear quem fez as mudanças, quando ocorreram e a variação das quantidades." 
+                    arrow 
+                    placement="top"
+                  >
+                    <IconButton size="small" edge="end">
+                      <HelpOutline fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </InputAdornment>
+              )
+            }}
           />
           <TextField 
             fullWidth={isMobile}
@@ -161,7 +180,6 @@ export default function AuditHistoryPage() {
           />
         </Box>
       </Paper>
-
       {filteredRecords.length === 0 ? (
         <Alert severity="info">Nenhum registro encontrado para os filtros selecionados.</Alert>
       ) : (

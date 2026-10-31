@@ -3,9 +3,10 @@ import {
   Paper, Typography, Button, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, TableFooter, Dialog, 
   DialogTitle, DialogContent, DialogActions, TextField, 
-  IconButton, Box, Card, CardContent, Divider, useMediaQuery, useTheme, Alert 
+  IconButton, Box, Card, CardContent, Divider, useMediaQuery, useTheme, Alert, Tooltip 
 } from '@mui/material';
-import { Edit, Delete, RestoreFromTrash, Info } from '@mui/icons-material';
+// 🟢 1. IMPORTAMOS O ÍCONE 'HelpOutline' (?) AQUI:
+import { Edit, Delete, RestoreFromTrash, Info, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
 
 interface Product {
@@ -25,7 +26,6 @@ const formatarMoedaBrasileira = (valor: number): string => {
   }).format(valor);
 };
 
-// Caminho relativo para funcionar tanto no PC quanto no Celular
 const API_URL = '/api';
 
 export default function InventoryPage() {
@@ -171,6 +171,7 @@ export default function InventoryPage() {
 
   return (
     <Box>
+      {/* 🟢 2. REMOVIDO O TOOLTIP DAQUI */}
       <Box mb={4} display="flex" justifyContent="flex-start">
         <Button 
           variant="outlined" 
@@ -178,7 +179,19 @@ export default function InventoryPage() {
           startIcon={<RestoreFromTrash />} 
           onClick={() => setOpenTrashDialog(true)}
           fullWidth={isMobile}
-          sx={{ height: isMobile ? 48 : 'auto' }}
+          sx={{ 
+            height: isMobile ? 48 : 'auto',
+            transition: 'all 0.2s ease-in-out',
+            '&:hover': {
+              backgroundColor: 'primary.main',
+              color: 'white',
+              transform: 'scale(1.02)',
+              boxShadow: 2,
+            },
+            '&:active': {
+              transform: 'scale(0.95)',
+            }
+          }}
         >
           Produtos inativos
         </Button>
@@ -337,14 +350,26 @@ export default function InventoryPage() {
 
       {/* DIALOG DE LIXEIRA (INATIVOS) */}
       <Dialog open={openTrashDialog} onClose={() => setOpenTrashDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
+        
+        {/* 🟢 3. TOOLTIP ADICIONADO AQUI NO CABEÇALHO (Ícone de '?' na direita) */}
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <RestoreFromTrash color="action" /> Produtos inativos
+          
+          <Tooltip 
+            title="Inativar um produto oculta-o das vendas e listagens do sistema, mas preserva todo o histórico de estoque e relatórios passados. Clique em restaurar para reativá-lo." 
+            arrow 
+            placement="bottom"
+          >
+            <IconButton size="small" sx={{ ml: 'auto' }}>
+              <HelpOutline fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </DialogTitle>
+
         <DialogContent dividers sx={{ p: isMobile ? 2 : 3 }}>
           {trashProducts.length === 0 ? (
             <Alert severity="success">Nenhum produto inativo no momento.</Alert>
           ) : isMobile ? (
-            /* 🟢 VISUALIZAÇÃO EM CARDS NO CELULAR */
             <Box display="flex" flexDirection="column" gap={2}>
               {trashProducts.map((p, i) => (
                 <Card key={p.id || i} variant="outlined">
@@ -381,7 +406,6 @@ export default function InventoryPage() {
               ))}
             </Box>
           ) : (
-            /* 🟢 VISUALIZAÇÃO EM TABELA NO DESKTOP */
             <TableContainer>
               <Table size="small">
                 <TableHead>

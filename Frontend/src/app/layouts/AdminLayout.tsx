@@ -23,6 +23,7 @@ import {
   LocalShipping,
   Brightness4, 
   Brightness7,
+  ReceiptLong,
   Menu as MenuIcon // 🟢 Ícone do menu hambúrguer importado
 } from '@mui/icons-material';
 
@@ -34,7 +35,8 @@ const menuItems = [
   { text: 'Estoque', icon: <Inventory />, path: '/admin/estoque' },
   { text: 'Movimentação', icon: <LocalShipping />, path: '/admin/movimentacao' },
   { text: 'Ativos', icon: <Category />, path: '/admin/ativos' },
-  { text: 'Relatórios', icon: <Assessment />, path: '/admin/relatorios' },
+  { text: 'Consultas', icon: <Assessment />, path: '/admin/relatorios' },
+  { text: 'Relatórios', icon: <ReceiptLong />, path: '/admin/relatorio-diario' },
   { text: 'Auditoria', icon: <History />, path: '/admin/auditoria' },
 ];
 
