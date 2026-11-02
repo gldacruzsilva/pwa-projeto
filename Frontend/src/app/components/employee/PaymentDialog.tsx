@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Box,
-  Typography, TextField, ToggleButtonGroup, ToggleButton, Table,
+  Typography, TextField, ToggleButton, Table, DialogContentText,
   TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Card, CardContent, Alert, IconButton, CircularProgress
+  Card, CardContent, Alert, IconButton, CircularProgress, Tooltip
 } from '@mui/material';
-import { CreditCard, AttachMoney, QrCode2, Delete, CheckCircle, Add } from '@mui/icons-material';
+import { CreditCard, Close, AttachMoney, QrCode2, Delete, CheckCircle, Add, HelpOutline, Settings } from '@mui/icons-material';
 import { toast } from 'sonner';
- 
+
 interface PaymentDialogProps {
   orderId: number;
   onClose: () => void;
@@ -32,9 +32,12 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
   const [isLoadingPaymentTypes, setIsLoadingPaymentTypes] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<number | null>(null);
+  const [isManagingPaymentTypes, setIsManagingPaymentTypes] = useState(false);
   const [isAddingPaymentType, setIsAddingPaymentType] = useState(false);
   const [newPaymentType, setNewPaymentType] = useState('');
   const [isSavingPaymentType, setIsSavingPaymentType] = useState(false);
+  const [paymentTypeToDeactivate, setPaymentTypeToDeactivate] = useState<PaymentType | null>(null);
+  const [isDeactivatingPaymentType, setIsDeactivatingPaymentType] = useState(false);
   const [amount, setAmount] = useState('');
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
 
@@ -97,20 +100,17 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
   const paymentsMade = payments.reduce((sum, p) => sum + p.amount, 0);
   const totalPaid = alreadyPaid + paymentsMade;
   
-  // 🟢 Arredondamento forçado para 2 casas decimais para anular a dízima do JavaScript
   const remaining = Math.round((total - totalPaid) * 100) / 100;
 
   const handleAddPayment = () => {
     const selectedType = paymentTypes.find((type) => type.codtp === paymentMethod);
     if (!selectedType) return toast.error('Selecione uma forma de pagamento.');
 
-    // 🟢 Aceita caso o usuário digite com vírgula em vez de ponto
     const amountStr = String(amount).replace(',', '.');
     const amountValue = parseFloat(amountStr);
     
     if (isNaN(amountValue) || amountValue <= 0) return toast.error('Digite um valor válido');
     
-    // 🟢 Validação blindada em centavos absolutos
     const valorEmCentavos = Math.round(amountValue * 100);
     const restanteEmCentavos = Math.round(remaining * 100);
 
@@ -134,7 +134,36 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
     setPayments(payments.filter(p => p.id !== id));
   };
 
-  const handleCreatePaymentType = async () => {
+  const handleDeactivatePaymentType = async () => {
+    if (!paymentTypeToDeactivate) return;
+
+    setIsDeactivatingPaymentType(true);
+    try {
+      const response = await fetch(`/api/tipos-pagamento/${paymentTypeToDeactivate.codtp}`, {
+        method: 'DELETE',
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Resposta inválida ao remover a forma de pagamento.');
+      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.mensagem || 'Não foi possível remover a forma de pagamento.');
+
+      const remainingTypes = paymentTypes.filter((type) => type.codtp !== paymentTypeToDeactivate.codtp);
+      setPaymentTypes(remainingTypes);
+      setPaymentMethod((current) => (
+        current === paymentTypeToDeactivate.codtp ? remainingTypes[0]?.codtp ?? null : current
+      ));
+      toast.success('Forma de pagamento removida da seleção. O histórico foi preservado.');
+      setPaymentTypeToDeactivate(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao remover forma de pagamento.');
+    } finally {
+      setIsDeactivatingPaymentType(false);
+    }
+  };
+
+ const handleCreatePaymentType = async () => {
     const description = newPaymentType.trim();
     if (!description) return toast.error('Informe o nome da nova forma de pagamento.');
     if (description.length > 45) return toast.error('O nome deve ter no máximo 45 caracteres.');
@@ -146,21 +175,31 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ descricao: description }),
       });
+      
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
-        throw new Error('A API não reconheceu o cadastro de formas de pagamento. Reinicie o backend e tente novamente.');
+        throw new Error('A API não reconheceu o cadastro de formas de pagamento.');
       }
+      
       const result = await response.json();
       if (!response.ok) throw new Error(result.mensagem || 'Não foi possível cadastrar a forma de pagamento.');
 
-      const createdType: PaymentType = { codtp: Number(result.codtp), descricao: result.descricao };
+      const createdType: PaymentType = {
+        codtp: Number(result.codtp),
+        descricao: result.descricao,
+      };
       if (!Number.isInteger(createdType.codtp) || !createdType.descricao) {
-        throw new Error('O backend retornou dados inválidos para a forma de pagamento.');
+        throw new Error('A API retornou dados inválidos para a forma de pagamento.');
       }
-      setPaymentTypes((currentTypes) => [...currentTypes, createdType]);
+      setPaymentTypes((currentTypes) => (
+        [...currentTypes.filter((type) => type.codtp !== createdType.codtp), createdType]
+          .sort((a, b) => a.descricao.localeCompare(b.descricao, 'pt-BR'))
+      ));
       setPaymentMethod(createdType.codtp);
+
       setNewPaymentType('');
       setIsAddingPaymentType(false);
+      setIsManagingPaymentTypes(false);
       toast.success('Forma de pagamento adicionada.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao cadastrar forma de pagamento.');
@@ -206,9 +245,21 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
   const nomeCliente = order ? (order.Nick || order.nick || 'Sem nome') : '';
 
   return (
+    <>
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '12px', bgcolor: 'background.paper' } }}>
-      <DialogTitle sx={{ borderBottom: 1, borderColor: 'divider', pb: 2 }}>
-        Pagamento - Comanda #{orderId} {nomeCliente && `- ${nomeCliente}`}
+      <DialogTitle sx={{ borderBottom: 1, borderColor: 'divider', pb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          Pagamento - Comanda #{order?.numero_exibicao ?? orderId} {nomeCliente && `- ${nomeCliente}`}
+        </Box>
+        <Tooltip 
+          title="Selecione a forma de pagamento, digite o valor e clique em Adicionar. Para pagamentos mistos, adicione um por vez antes de confirmar. O botão 'Pagar Tudo' preenche o valor restante da comanda. O restante será calculado automaticamente, e se houver troco, ele será exibido." 
+          arrow 
+          placement="bottom-end"
+        >
+          <IconButton size="small" sx={{ color: 'text.secondary' }}>
+            <HelpOutline fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </DialogTitle>
 
       {isLoading ? (
@@ -227,104 +278,171 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
           
           {remaining > 0 ? (
             <Box sx={{ mb: 4 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Adicionar Forma de Pagamento</Typography>
-              <ToggleButtonGroup
-                value={paymentMethod}
-                exclusive
-                onChange={(_, value) => value && setPaymentMethod(value)}
-                fullWidth
-                sx={{
-                  mb: 3,
-                  flexWrap: 'wrap',
-                  '& .MuiToggleButton-root': {
-                    flex: '1 1 50%',
-                    maxWidth: '50%',
-                    textTransform: 'none',
-                    fontWeight: 500,
-                  },
-                }}
-              >
-                {paymentTypes.map((type) => (
-                  <ToggleButton key={type.codtp} value={type.codtp} disabled={isLoadingPaymentTypes}>
-                    {getMethodIcon(type.descricao)} {type.descricao}
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroup>
+              
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, gap: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Forma de Pagamento</Typography>
+        <Tooltip title="Adicionar ou remover formas de pagamento" arrow>
+          <IconButton
+            size="small"
+            aria-label={isManagingPaymentTypes ? 'Fechar configurações das formas de pagamento' : 'Configurar formas de pagamento'}
+            onClick={() => {
+              setIsManagingPaymentTypes((current) => !current);
+              setIsAddingPaymentType(false);
+              setNewPaymentType('');
+            }}
+            sx={{ width: 24, height: 24, bgcolor: 'action.hover' }}
+          >
+            {isManagingPaymentTypes ? <Close sx={{ fontSize: 16 }} /> : <Settings sx={{ fontSize: 16 }} />}
+          </IconButton>
+        </Tooltip>
+      </Box>
 
-              {paymentTypes.length === 0 && !isLoadingPaymentTypes && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  Cadastre uma forma de pagamento antes de registrar o recebimento.
-                </Alert>
-              )}
-
-              <Box sx={{ mb: 2 }}>
-                <Button
-                  size="small"
-                  startIcon={<Add />}
-                  onClick={() => setIsAddingPaymentType((isAdding) => !isAdding)}
-                  sx={{ textTransform: 'none' }}
+      {isLoadingPaymentTypes ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+          <CircularProgress size={24} />
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 3 }}>
+          {paymentTypes.map((type) => {
+            const hasPendingPayment = payments.some((payment) => payment.codtp === type.codtp);
+            return (
+              <Box key={type.codtp} sx={{ display: 'flex', alignItems: 'stretch' }}>
+                <ToggleButton
+                  selected={paymentMethod === type.codtp}
+                  value={type.codtp}
+                  onChange={(_, selected) => {
+                    if (selected) setPaymentMethod(type.codtp);
+                  }}
+                  aria-label={type.descricao}
+                  sx={{ textTransform: 'none', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
                 >
-                  {isAddingPaymentType ? 'Cancelar nova forma' : 'Adicionar forma'}
-                </Button>
-                {isAddingPaymentType && (
-                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Nova forma de pagamento"
-                      value={newPaymentType}
-                      onChange={(event) => setNewPaymentType(event.target.value)}
-                      inputProps={{ maxLength: 45 }}
-                    />
-                    <Button
-                      variant="outlined"
-                      onClick={handleCreatePaymentType}
-                      disabled={isSavingPaymentType || !newPaymentType.trim()}
-                      sx={{ whiteSpace: 'nowrap', textTransform: 'none' }}
-                    >
-                      {isSavingPaymentType ? <CircularProgress size={20} /> : 'Salvar'}
-                    </Button>
-                  </Box>
+                  {getMethodIcon(type.descricao)}
+                  {type.descricao}
+                </ToggleButton>
+                {isManagingPaymentTypes && (
+                  <Tooltip
+                    title={hasPendingPayment
+                      ? 'Remova o pagamento pendente antes de inativar esta forma.'
+                      : `Inativar ${type.descricao}`}
+                    arrow
+                  >
+                    <span>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        aria-label={`Inativar ${type.descricao}`}
+                        disabled={hasPendingPayment || isDeactivatingPaymentType}
+                        onClick={() => setPaymentTypeToDeactivate(type)}
+                        sx={{
+                          height: '100%',
+                          border: 1,
+                          borderColor: 'divider',
+                          borderLeft: 0,
+                          borderTopLeftRadius: 0,
+                          borderBottomLeftRadius: 0,
+                        }}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
                 )}
               </Box>
+            );
+          })}
+        </Box>
+      )}
 
-              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-                <TextField
-                  fullWidth
-                  label="Valor (R$)"
-                  type="text"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
-                  placeholder="0.00"
-                  size="small"
-                />
-                <Button 
-                  variant="outlined" 
-                  disableElevation 
-                  onClick={() => setAmount(remaining > 0 ? remaining.toFixed(2) : '0.00')} 
-                  sx={{ whiteSpace: 'nowrap', textTransform: 'none', fontWeight: 600 }}
-                >
-                  Pagar Tudo
-                </Button>
-              </Box>
-
-              <Button
-                fullWidth
-                variant="contained"
-                disableElevation
-                onClick={handleAddPayment}
-                disabled={!amount || parseFloat(amount.replace(',', '.')) <= 0 || paymentMethod === null || isLoadingPaymentTypes}
-                sx={{ py: 1.5, borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
-              >
-                Adicionar à Lista de Pagamentos
-              </Button>
-            </Box>
-          ) : (
-            <Alert severity="success" icon={<CheckCircle />} sx={{ mb: 4, borderRadius: '8px', fontWeight: 500 }}>
-              Comanda totalmente paga! Clique em Confirmar para encerrar.
-            </Alert>
+      {isManagingPaymentTypes && (
+        <Box sx={{ mb: 2 }}>
+          {!isAddingPaymentType && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<Add />}
+              onClick={() => setIsAddingPaymentType(true)}
+              sx={{ textTransform: 'none' }}
+            >
+              Adicionar forma de pagamento
+            </Button>
           )}
+        </Box>
+      )}
+
+      {isManagingPaymentTypes && isAddingPaymentType && (
+        <Box sx={{ mb: 3, p: 2, border: 1, borderColor: 'divider', borderRadius: 2, bgcolor: 'action.hover' }}>
+          <Typography variant="caption" fontWeight="bold" display="block" mb={1}>Cadastrar nova forma de pagamento</Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
+              fullWidth
+              size="small"
+              value={newPaymentType}
+              onChange={(event) => setNewPaymentType(event.target.value)}
+              inputProps={{ maxLength: 45 }}
+              autoFocus
+              sx={{ bgcolor: 'background.paper' }}
+            />
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => {
+                setIsAddingPaymentType(false);
+                setNewPaymentType('');
+              }}
+              sx={{ textTransform: 'none' }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              disableElevation
+              onClick={handleCreatePaymentType}
+              disabled={isSavingPaymentType || !newPaymentType.trim()}
+              sx={{ whiteSpace: 'nowrap', textTransform: 'none' }}
+            >
+              {isSavingPaymentType ? <CircularProgress size={20} color="inherit" /> : 'Salvar'}
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+                    <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                      <TextField
+                        fullWidth
+                        label="Valor (R$)"
+                        type="text"
+                        inputMode="decimal"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                        placeholder="0.00"
+                        size="small"
+                      />
+                      <Button 
+                        variant="outlined" 
+                        disableElevation 
+                        onClick={() => setAmount(remaining > 0 ? remaining.toFixed(2) : '0.00')} 
+                        sx={{ whiteSpace: 'nowrap', textTransform: 'none', fontWeight: 600 }}
+                      >
+                        Pagar Tudo
+                      </Button>
+                    </Box>
+
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      disableElevation
+                      onClick={handleAddPayment}
+                      disabled={!amount || parseFloat(amount.replace(',', '.')) <= 0 || paymentMethod === null || isLoadingPaymentTypes}
+                      sx={{ py: 1.5, borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
+                    >
+                      Adicionar à Lista de Pagamentos
+                    </Button>
+                  </Box>
+                ) : (
+                  <Alert severity="success" icon={<CheckCircle />} sx={{ mb: 4, borderRadius: '8px', fontWeight: 500 }}>
+                    Comanda totalmente paga! Clique em Confirmar para encerrar.
+                  </Alert>
+                )}
 
           {payments.length > 0 && (
             <Box sx={{ mb: 4 }}>
@@ -403,5 +521,37 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
         </Button>
       </DialogActions>
     </Dialog>
+    <Dialog
+      open={!!paymentTypeToDeactivate}
+      onClose={() => {
+        if (!isDeactivatingPaymentType) setPaymentTypeToDeactivate(null);
+      }}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle>Remover forma de pagamento?</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          {paymentTypeToDeactivate?.descricao} deixará de aparecer para novos pagamentos. Os pagamentos já registrados e os relatórios serão preservados.
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button
+          onClick={() => setPaymentTypeToDeactivate(null)}
+          disabled={isDeactivatingPaymentType}
+        >
+          Cancelar
+        </Button>
+        <Button
+          color="error"
+          variant="contained"
+          onClick={handleDeactivatePaymentType}
+          disabled={isDeactivatingPaymentType}
+        >
+          {isDeactivatingPaymentType ? <CircularProgress size={20} color="inherit" /> : 'Remover'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }

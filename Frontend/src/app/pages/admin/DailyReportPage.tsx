@@ -24,6 +24,8 @@ interface DailyReport {
   data: string;
   comandas: {
     codc: number;
+    numero_exibicao: number;
+    data_operacional: string;
     nick: string;
     valor_total: number | string;
     data_venda: string;
@@ -43,6 +45,8 @@ interface DailyReport {
     tipo_pagamento: string;
     valor: number | string;
     codc: number;
+    numero_exibicao: number;
+    data_operacional: string;
     nick: string | null;
   }[];
   estoque: {
@@ -277,12 +281,12 @@ export default function DailyReportPage() {
         const status = Number(order.status) === 0 ? 'Encerrada' : 'Em aberto';
         if (!items.length) {
           return [[
-            `#${order.codc}`, order.nick, formatDateTime(order.data_venda), 'Sem itens',
+            `#${order.numero_exibicao}`, order.nick, formatDateTime(order.data_venda), 'Sem itens',
             '-', '-', formatCurrency(order.valor_total), status,
           ]];
         }
         return items.map((item) => [
-          `#${order.codc}`,
+          `#${order.numero_exibicao}`,
           order.nick,
           formatDateTime(order.data_venda),
           `${item.produto_nome || 'Produto não identificado'} (lote ${item.lote})`,
@@ -303,7 +307,7 @@ export default function DailyReportPage() {
         ['Horário', 'Comanda', 'Cliente', 'Forma de pagamento', 'Valor'],
         report.pagamentos.map((payment) => [
           formatDateTime(payment.data),
-          `#${payment.codc}`,
+          `#${payment.numero_exibicao}`,
           payment.nick || 'Comanda não identificada',
           payment.tipo_pagamento,
           formatCurrency(payment.valor),
@@ -425,7 +429,7 @@ export default function DailyReportPage() {
                     const items = report.itens.filter((item) => item.codc === order.codc);
                     return (items.length ? items : [null]).map((item, index) => (
                       <TableRow key={`${order.codc}-${item?.codp || 'empty'}-${item?.lote || index}`}>
-                        <TableCell>#{order.codc}</TableCell>
+                        <TableCell>#{order.numero_exibicao}</TableCell>
                         <TableCell>{order.nick}</TableCell>
                         <TableCell>{formatDateTime(order.data_venda)}</TableCell>
                         <TableCell>{item ? `${item.produto_nome || 'Produto não identificado'} / lote ${item.lote}` : 'Sem itens'}</TableCell>
@@ -452,7 +456,7 @@ export default function DailyReportPage() {
                 <TableBody>
                   {report.pagamentos.map((payment) => (
                     <TableRow key={payment.codpag}>
-                      <TableCell>{formatDateTime(payment.data)}</TableCell><TableCell>#{payment.codc}</TableCell>
+                      <TableCell>{formatDateTime(payment.data)}</TableCell><TableCell>#{payment.numero_exibicao}</TableCell>
                       <TableCell>{payment.nick || 'Comanda não identificada'}</TableCell>
                       <TableCell>{payment.tipo_pagamento}</TableCell><TableCell align="right">{formatCurrency(payment.valor)}</TableCell>
                     </TableRow>

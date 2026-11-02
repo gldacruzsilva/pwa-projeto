@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Container,
@@ -8,6 +8,7 @@ import {
   Typography,
   Box,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import { toast } from 'sonner';
 import { API_URL } from '../../services/api';
@@ -17,10 +18,15 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const loginInProgress = useRef(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    if (loginInProgress.current) return;
+
+    loginInProgress.current = true;
+    setIsSubmitting(true);
 
     try {
       const resposta = await fetch(`/api/login`, {
@@ -49,6 +55,9 @@ export default function LoginPage() {
       }
     } catch (erro) {
       setError('Erro ao conectar com o servidor. Verifique se o backend está rodando.');
+    } finally {
+      loginInProgress.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -74,8 +83,12 @@ export default function LoginPage() {
               label="Usuário"
               variant="outlined"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setError('');
+              }}
               required
+              disabled={isSubmitting}
               InputLabelProps={{ shrink: true }}
             />
 
@@ -85,8 +98,12 @@ export default function LoginPage() {
               type="password"
               variant="outlined"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError('');
+              }}
               required
+              disabled={isSubmitting}
               InputLabelProps={{ shrink: true }}
             />
 
@@ -101,9 +118,15 @@ export default function LoginPage() {
               fullWidth
               variant="contained"
               size="large"
+              disabled={isSubmitting}
               sx={{ py: 1.5, fontWeight: 'bold', textTransform: 'none', fontSize: '1rem', mt: 1 }}
             >
-              Entrar
+              {isSubmitting ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={20} color="inherit" />
+                  Entrando...
+                </Box>
+              ) : 'Entrar'}
             </Button>
           </Box>
         </form>

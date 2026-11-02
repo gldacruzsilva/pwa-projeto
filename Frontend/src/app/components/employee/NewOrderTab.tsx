@@ -6,8 +6,11 @@ import {
   Paper,
   Typography,
   Alert,
+  InputAdornment,
+  Tooltip,
+  IconButton,
 } from '@mui/material';
-import { PersonAddAlt1 } from '@mui/icons-material';
+import { HelpOutline, PersonAddAlt1 } from '@mui/icons-material';
 import { toast } from 'sonner';
 
 interface NewOrderTabProps {
@@ -37,7 +40,7 @@ export default function NewOrderTab({ onOrderCreated }: NewOrderTabProps) {
 
       if (response.ok) {
         const data = await response.json();
-        toast.success(`Comanda #${data.codc} criada com sucesso para ${customerName}!`);
+        toast.success(`Comanda #${data.numero_exibicao} criada com sucesso para ${customerName}!`);
         setCustomerName('');
         
         // Atualiza a lista de comandas na outra aba automaticamente
@@ -63,7 +66,7 @@ export default function NewOrderTab({ onOrderCreated }: NewOrderTabProps) {
     },
   };
 
-  return (
+ return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: '1400px', mx: 'auto' }}>
       <Box mb={4}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 600, color: 'text.primary', letterSpacing: '-0.5px' }}>
@@ -71,12 +74,7 @@ export default function NewOrderTab({ onOrderCreated }: NewOrderTabProps) {
         </Typography>
       </Box>
 
-      {/* 🟢 O segredo estava aqui no bgcolor: agora usa o background nativo do tema! */}
       <Paper elevation={0} sx={{ p: 4, borderRadius: '12px', border: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
-        <Alert severity="info" sx={{ mb: 4, borderRadius: '8px' }}>
-          Digite o nome do cliente ou da mesa para abrir uma nova comanda. 
-        </Alert>
-
         <form onSubmit={handleCreateOrder}>
           <Box display="flex" flexDirection="column" gap={3}>
             <TextField
@@ -88,6 +86,22 @@ export default function NewOrderTab({ onOrderCreated }: NewOrderTabProps) {
               helperText={`${customerName.length}/45 caracteres`}
               sx={modernInputStyle}
               autoFocus
+              // 🟢 ÍCONE DE INTERROGAÇÃO INSERIDO DENTRO DO INPUT
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Tooltip 
+                      title="Digite o nome do cliente ou da mesa para abrir uma nova comanda." 
+                      arrow 
+                      placement="top"
+                    >
+                      <IconButton size="small" edge="end">
+                        <HelpOutline fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                )
+              }}
             />
 
             <Button

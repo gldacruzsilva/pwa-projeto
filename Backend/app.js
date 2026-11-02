@@ -5,7 +5,7 @@ import { validarCodigoBarras } from './codigoBarras.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '3mb' }));
 
 /* ==========================================
    RELATÓRIOS E LOGIN
@@ -35,7 +35,7 @@ app.get('/relatorios/produtos', async (req, res) => {
 
 app.get('/relatorios/vendas', async (req, res) => {
     try {
-        const [linhas] = await db.execute("SELECT codc, nick, valor_total, data_venda, status FROM Comanda ORDER BY data_venda DESC");
+        const [linhas] = await db.execute("SELECT codc, numero_exibicao, data_operacional, nick, valor_total, data_venda, status FROM Comanda ORDER BY data_venda DESC");
         res.status(200).json(linhas);
     } catch (erro) { 
         console.error('Erro ao buscar relatório de vendas:', erro);
@@ -99,7 +99,7 @@ app.get('/relatorios/movimentacao-diaria', async (req, res) => {
         }
 
         const [comandas] = await db.execute(`
-            SELECT codc, nick, valor_total,
+            SELECT codc, numero_exibicao, data_operacional, nick, valor_total,
                    DATE_FORMAT(data_venda, '%Y-%m-%d %H:%i:%s') AS data_venda,
                    status
             FROM Comanda
@@ -119,7 +119,8 @@ app.get('/relatorios/movimentacao-diaria', async (req, res) => {
         const [pagamentos] = await db.execute(`
             SELECT pg.codpag,
                    DATE_FORMAT(pg.data, '%Y-%m-%d %H:%i:%s') AS data,
-                   tp.descricao AS tipo_pagamento, pg.valor, pg.codc, c.nick
+                   tp.descricao AS tipo_pagamento, pg.valor, pg.codc,
+                   c.numero_exibicao, c.data_operacional, c.nick
             FROM Pagamento pg
             LEFT JOIN Comanda c ON c.codc = pg.codc
             JOIN TipoPagamento tp ON tp.codtp = pg.codtp
@@ -246,7 +247,7 @@ app.delete('/auditoria/estoque', async (req, res) => {
 app.get('/produtos', async (req, res) => {
     try {
         const { status } = req.query;
-        let sql = 'SELECT codp, nome, preco_venda, preco_custo, qtde_estoque, lote, status FROM Produto';
+        let sql = 'SELECT codp, nome, preco_venda, preco_custo, qtde_estoque, lote, status, imagem FROM Produto';
         let params = [];
         
         if (status !== undefined && status !== 'all') {
@@ -264,11 +265,36 @@ app.get('/produtos', async (req, res) => {
     }
 });
 
+app.get('/produtos/mais-vendidos', async (req, res) => {
+    try {
+        const [produtos] = await db.execute(`
+            SELECT p.codp, p.nome, p.preco_venda, p.qtde_estoque, p.lote, p.imagem,
+                   COALESCE(v.quantidade_vendida, 0) AS quantidade_vendida
+            FROM Produto p
+            LEFT JOIN (
+                SELECT iv.codp, iv.lote, SUM(iv.qtde) AS quantidade_vendida
+                FROM ItemVenda iv
+                JOIN Comanda c ON c.codc = iv.codc
+                WHERE c.status = 0
+                GROUP BY iv.codp, iv.lote
+            ) v ON v.codp = p.codp AND v.lote = p.lote
+            WHERE p.status = 1 OR p.status IS NULL
+            ORDER BY quantidade_vendida DESC, p.nome ASC, p.codp ASC, p.lote ASC
+            LIMIT 6
+        `);
+        res.status(200).json(produtos);
+    } catch (erro) {
+        console.error('Erro ao buscar produtos mais vendidos:', erro);
+        res.status(500).json({ mensagem: 'Erro ao buscar produtos mais vendidos.' });
+    }
+});
+
 app.post('/produtos', async (req, res) => {
     try {
-        let { codp, nome = '', preco_venda = 0, qtde_estoque = 0, preco_custo = 0, lote = '1', descricao = 'ENTRADA: Cadastro Inicial', codu = 1 } = req.body; 
-        
+        let { codp, nome = '', preco_venda = 0, qtde_estoque = 0, preco_custo = 0, lote = '1', imagem = null, descricao = 'ENTRADA: Cadastro Inicial', codu = 1 } = req.body;
+
         if (!nome || nome.trim() === '') return res.status(400).json({ mensagem: 'Nome do produto é obrigatório.' });
+        if (!validarImagemProduto(imagem)) return res.status(400).json({ mensagem: 'Imagem inválida ou muito grande.' });
 
         if (codp === undefined || codp === null || String(codp).trim() === '') {
             return res.status(400).json({ detalhe: 'O código de barras é obrigatório.' });
@@ -303,8 +329,8 @@ app.post('/produtos', async (req, res) => {
             }
         }
 
-        const sql = 'INSERT INTO Produto (codp, nome, preco_venda, qtde_estoque, preco_custo, lote, status) VALUES (?, ?, ?, ?, ?, ?, 1)';
-        await db.execute(sql, [codp, nome.trim(), Number(preco_venda ?? 0), Number(qtde_estoque ?? 0), Number(preco_custo ?? 0), lote]);
+        const sql = 'INSERT INTO Produto (codp, nome, preco_venda, qtde_estoque, preco_custo, lote, status, imagem) VALUES (?, ?, ?, ?, ?, ?, 1, ?)';
+        await db.execute(sql, [codp, nome.trim(), Number(preco_venda ?? 0), Number(qtde_estoque ?? 0), Number(preco_custo ?? 0), lote, imagem]);
         
         const descSegura = (descricao || 'ENTRADA: Cadastro Inicial').substring(0, 40);
         await db.execute('INSERT INTO SaldoEstoque (qtde, data, codp, codu, descricao, lote) VALUES (?, NOW(), ?, ?, ?, ?)', 
@@ -321,10 +347,13 @@ app.post('/produtos', async (req, res) => {
 app.put('/produtos/:id', async (req, res) => {
     try {
         const { id } = req.params; 
-        const { nome, preco, preco_venda, qtde_estoque, preco_custo, lote, lote_original, descricao = 'Movimentação', codu = 1 } = req.body; 
+        const { nome, preco, preco_venda, qtde_estoque, preco_custo, lote, lote_original, imagem, descricao = 'Movimentação', codu = 1 } = req.body;
+        if (imagem !== undefined && !validarImagemProduto(imagem)) {
+            return res.status(400).json({ mensagem: 'Imagem inválida ou muito grande.' });
+        }
 
         const [produtoAtual] = await db.execute(
-            'SELECT nome, preco_venda, qtde_estoque, preco_custo, lote FROM Produto WHERE codp = ? AND lote = ?', 
+            'SELECT nome, preco_venda, qtde_estoque, preco_custo, lote, imagem FROM Produto WHERE codp = ? AND lote = ?',
             [id, lote_original ?? ''] 
         );
         
@@ -337,6 +366,7 @@ app.put('/produtos/:id', async (req, res) => {
         const custoFinal = preco_custo !== undefined ? preco_custo : p.preco_custo;
         const loteFinal = lote !== undefined ? lote : p.lote;
         const precoFinal = preco !== undefined ? preco : (preco_venda !== undefined ? preco_venda : p.preco_venda);
+        const imagemFinal = imagem !== undefined ? imagem : p.imagem;
 
         let textoAuditoria = descricao;
         let registrarAuditoria = false;
@@ -354,13 +384,14 @@ app.put('/produtos/:id', async (req, res) => {
             registrarAuditoria = true;
         }
 
-        const sql = 'UPDATE Produto SET nome = ?, preco_venda = ?, qtde_estoque = ?, preco_custo = ?, lote = ? WHERE codp = ? AND lote = ?';
+        const sql = 'UPDATE Produto SET nome = ?, preco_venda = ?, qtde_estoque = ?, preco_custo = ?, lote = ?, imagem = ? WHERE codp = ? AND lote = ?';
         await db.execute(sql, [
             nomeFinal ?? null, 
             precoFinal ?? null, 
             qtdeFinal ?? null, 
             custoFinal ?? null, 
-            loteFinal ?? null, 
+            loteFinal ?? null,
+            imagemFinal ?? null,
             id, 
             lote_original ?? ''
         ]);
@@ -379,6 +410,13 @@ app.put('/produtos/:id', async (req, res) => {
         res.status(500).json({ mensagem: 'Erro interno.' }); 
     }
 });
+
+function validarImagemProduto(imagem) {
+    if (imagem === null || imagem === '') return true;
+    return typeof imagem === 'string'
+        && imagem.length <= 2_500_000
+        && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(imagem);
+}
 
 app.delete('/produtos/:id', async (req, res) => {
     try {
@@ -550,12 +588,12 @@ app.get('/comandas', async (req, res) => {
     try {
         const sql = `
             SELECT 
-                v.codc, v.nick, v.valor_total, v.data_venda, v.status,
+                v.codc, v.numero_exibicao, v.data_operacional, v.nick, v.valor_total, v.data_venda, v.status,
                 COALESCE(SUM(p.valor), 0) AS valor_pago
             FROM Comanda v
             LEFT JOIN Pagamento p ON v.codc = p.codc
             WHERE v.status = 1
-            GROUP BY v.codc, v.nick, v.valor_total, v.data_venda, v.status
+            GROUP BY v.codc, v.numero_exibicao, v.data_operacional, v.nick, v.valor_total, v.data_venda, v.status
             ORDER BY v.data_venda DESC
         `;
         const [linhas] = await db.execute(sql);
@@ -567,17 +605,63 @@ app.get('/comandas', async (req, res) => {
 });
 
 app.post('/comandas', async (req, res) => {
+    let connection;
+    let transactionStarted = false;
     try {
         const { nick } = req.body;
         if (!nick || nick.trim() === '') return res.status(400).json({ mensagem: 'Nome obrigatório.' });
         const nickFormatado = nick.trim();
         const [comandaExistente] = await db.execute("SELECT codc FROM Comanda WHERE nick = ? AND status = 1", [nickFormatado]);
         if (comandaExistente.length > 0) return res.status(400).json({ mensagem: 'Já existe comanda ativa.' });
-        const [resultado] = await db.execute("INSERT INTO Comanda (valor_total, nick, status) VALUES (0.00, ?, 1)", [nickFormatado]);
-        res.status(201).json({ mensagem: 'Criada!', codc: resultado.insertId });
+
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+        transactionStarted = true;
+
+        const [periodos] = await connection.execute(`
+            SELECT DATE_FORMAT(
+                DATE(IF(TIME(NOW()) < '06:00:00', DATE_SUB(CURDATE(), INTERVAL 1 DAY), CURDATE())),
+                '%Y-%m-%d'
+            ) AS data_operacional
+        `);
+        const dataOperacional = periodos[0].data_operacional;
+
+        await connection.execute(`
+            INSERT INTO ContadorComanda (data_operacional, ultimo_numero)
+            VALUES (?, 1)
+            ON DUPLICATE KEY UPDATE ultimo_numero = ultimo_numero + 1
+        `, [dataOperacional]);
+        const [contadores] = await connection.execute(
+            'SELECT ultimo_numero FROM ContadorComanda WHERE data_operacional = ?',
+            [dataOperacional]
+        );
+        const numeroExibicao = Number(contadores[0].ultimo_numero);
+
+        const [resultado] = await connection.execute(
+            'INSERT INTO Comanda (numero_exibicao, data_operacional, valor_total, nick, status) VALUES (?, ?, 0.00, ?, 1)',
+            [numeroExibicao, dataOperacional, nickFormatado]
+        );
+
+        await connection.commit();
+        transactionStarted = false;
+        res.status(201).json({
+            mensagem: 'Criada!',
+            codc: resultado.insertId,
+            numero_exibicao: numeroExibicao,
+            data_operacional: dataOperacional
+        });
     } catch (erro) { 
+        if (connection && transactionStarted) {
+            try {
+                await connection.rollback();
+            } catch (erroRollback) {
+                console.error('Erro ao desfazer a criação da comanda:', erroRollback);
+            }
+        }
         console.error('Erro no POST /comandas:', erro);
         res.status(500).json({ mensagem: 'Erro interno' }); 
+    } finally {
+        if (connection) connection.release();
     }
 });
 
@@ -595,7 +679,7 @@ app.delete('/comandas/:id', async (req, res) => {
 app.get('/comandas/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const [venda] = await db.execute('SELECT codc, nick, valor_total, data_venda, status FROM Comanda WHERE codc = ?', [id]);
+        const [venda] = await db.execute('SELECT codc, numero_exibicao, data_operacional, nick, valor_total, data_venda, status FROM Comanda WHERE codc = ?', [id]);
         if (venda.length === 0) return res.status(404).json({ mensagem: 'Não encontrada' });
 
         const [itens] = await db.execute(`
@@ -742,6 +826,23 @@ app.post('/tipos-pagamento', async (req, res) => {
         if (!descricao) return res.status(400).json({ mensagem: 'Informe a descrição da forma de pagamento.' });
         if (descricao.length > 45) return res.status(400).json({ mensagem: 'A descrição deve ter no máximo 45 caracteres.' });
 
+        const [existentes] = await db.execute(
+            'SELECT codtp, descricao, status FROM TipoPagamento WHERE LOWER(descricao) = LOWER(?) LIMIT 1',
+            [descricao]
+        );
+        if (existentes.length > 0) {
+            if (Number(existentes[0].status) === 1) {
+                return res.status(409).json({ mensagem: 'Já existe uma forma de pagamento com essa descrição.' });
+            }
+
+            await db.execute('UPDATE TipoPagamento SET status = 1 WHERE codtp = ?', [existentes[0].codtp]);
+            return res.status(201).json({
+                codtp: existentes[0].codtp,
+                descricao: existentes[0].descricao,
+                status: 1
+            });
+        }
+
         const [resultado] = await db.execute(
             'INSERT INTO TipoPagamento (descricao, status) VALUES (?, 1)',
             [descricao]
@@ -753,6 +854,31 @@ app.post('/tipos-pagamento', async (req, res) => {
         }
         console.error('Erro ao cadastrar tipo de pagamento:', erro);
         res.status(500).json({ mensagem: 'Erro ao cadastrar forma de pagamento.' });
+    }
+});
+
+app.delete('/tipos-pagamento/:id', async (req, res) => {
+    try {
+        const codtp = Number(req.params.id);
+        if (!Number.isInteger(codtp) || codtp <= 0) {
+            return res.status(400).json({ mensagem: 'Código da forma de pagamento inválido.' });
+        }
+
+        const [resultado] = await db.execute(
+            'UPDATE TipoPagamento SET status = 0 WHERE codtp = ?',
+            [codtp]
+        );
+        if (resultado.affectedRows === 0) {
+            const [tipos] = await db.execute('SELECT codtp FROM TipoPagamento WHERE codtp = ?', [codtp]);
+            if (tipos.length === 0) {
+                return res.status(404).json({ mensagem: 'Forma de pagamento não encontrada.' });
+            }
+        }
+
+        res.status(200).json({ mensagem: 'Forma de pagamento removida da seleção.' });
+    } catch (erro) {
+        console.error(`Erro ao remover forma de pagamento ${req.params.id}:`, erro);
+        res.status(500).json({ mensagem: 'Erro ao remover forma de pagamento.' });
     }
 });
 

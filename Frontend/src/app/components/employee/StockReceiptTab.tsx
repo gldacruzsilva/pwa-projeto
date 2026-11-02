@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { 
-  Box, TextField, Button, Paper, Typography, Table, TableBody, TableCell, 
-  TableContainer, TableHead, TableRow, IconButton, Alert, Autocomplete, 
-  Dialog, DialogTitle, DialogContent, DialogActions, MenuItem,
+  Box, TextField, Button, Paper, Typography, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, IconButton, Autocomplete, 
+  Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Tooltip,
   Card, CardContent, useMediaQuery, useTheme 
 } from '@mui/material';
-import { Add, Remove, Delete, AddCircleOutline } from '@mui/icons-material';
+import { Add, Delete, AddCircleOutline, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
+import ProductImagePicker from '../ProductImagePicker';
 
 export default function StockReceiptTab() {
   const [description, setDescription] = useState('');
@@ -15,7 +16,7 @@ export default function StockReceiptTab() {
   const [barcode, setBarcode] = useState('');
   const [productList, setProductList] = useState<any[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [novoProduto, setNovoProduto] = useState({ codp: '', nome: '', preco: '', preco_custo: '', lote: '1' });
+  const [novoProduto, setNovoProduto] = useState({ codp: '', nome: '', preco: '', preco_custo: '', imagem: '' });
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -27,7 +28,6 @@ export default function StockReceiptTab() {
 
   const buscarProdutos = async () => {
     try {
-      // 🟢 ROTA CORRIGIDA PARA FUNCIONAR NO CELULAR
       const resposta = await fetch('/api/produtos');
       if (resposta.ok) {
         const dados = await resposta.json();
@@ -38,7 +38,7 @@ export default function StockReceiptTab() {
 
   useEffect(() => { buscarProdutos(); }, []);
 
-  // 🟢 BLOQUEADORES DE TECLADO
+  // Bloqueadores de teclado
   const blockInvalidInteger = (e: React.KeyboardEvent) => {
     if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) e.preventDefault();
   };
@@ -50,13 +50,13 @@ export default function StockReceiptTab() {
   const handleCadastrarNovoProduto = async () => {
     if (!novoProduto.codp.trim() || !novoProduto.nome.trim()) return toast.error('Preencha os campos!');
     try {
-      // 🟢 ROTA CORRIGIDA PARA FUNCIONAR NO CELULAR
       const resposta = await fetch('/api/produtos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           codp: parseInt(novoProduto.codp), nome: novoProduto.nome, preco_venda: parseFloat(novoProduto.preco || '0'),
-          preco_custo: parseFloat(novoProduto.preco_custo || '0'), lote: novoProduto.lote || '1', qtde_estoque: 0,
+          preco_custo: parseFloat(novoProduto.preco_custo || '0'), lote: '1', qtde_estoque: 0,
+          imagem: novoProduto.imagem || null,
           descricao: 'ENTRADA: Cadastro de Novo Produto no Sistema', 
           codu: usuarioAtual.codu 
         })
@@ -64,7 +64,7 @@ export default function StockReceiptTab() {
       if (resposta.ok) {
         toast.success('Produto cadastrado!');
         setModalOpen(false);
-        setNovoProduto({ codp: '', nome: '', preco: '', preco_custo: '', lote: '1' });
+        setNovoProduto({ codp: '', nome: '', preco: '', preco_custo: '', imagem: '' });
         buscarProdutos();
       } else { toast.error('Falha ao cadastrar produto. Verifique o código de barras.'); }
     } catch (erro) { toast.error('Erro de conexão.'); }
@@ -128,7 +128,6 @@ export default function StockReceiptTab() {
           throw new Error(`Estoque insuficiente para a saída do produto: ${item.productName}`);
         }
 
-        // 🟢 ROTA CORRIGIDA PARA FUNCIONAR NO CELULAR
         return fetch(`/api/produtos/${item.productCode}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -150,16 +149,44 @@ export default function StockReceiptTab() {
 
   return (
     <Box>
-       <Box display="flex" justifyContent="flex-start" alignItems="center" mb={4}>
-        <Button variant="outlined" startIcon={<AddCircleOutline />} onClick={() => setModalOpen(true)}> 
-          Cadastrar Novo Produto 
-        </Button>
-      </Box>
-
       <Paper sx={{ p: { xs: 2, sm: 4 }, mb: 4, borderRadius: 2 }}>
-        <Alert severity="info" sx={{ mb: 4 }}>
-          Adicione os produtos abaixo e ajuste a quantidade da movimentação.
-        </Alert>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            Movimentação de Estoque
+          </Typography>
+          <Tooltip 
+            title="Adicione os produtos abaixo e ajuste a quantidade da movimentação" 
+            arrow 
+            placement="right"
+          >
+            <IconButton size="small" sx={{ color: 'text.secondary', p: 0.5 }}>
+              <HelpOutline fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+
+        <Box mb={4} display="flex" justifyContent="flex-start">
+          <Button 
+            variant="outlined" 
+            startIcon={<AddCircleOutline />} 
+            onClick={() => setModalOpen(true)}
+            sx={{
+              transition: 'all 0.2s ease-in-out',
+              '&:hover': {
+                backgroundColor: 'primary.main',
+                color: 'white',
+                transform: 'scale(1.02)',
+                boxShadow: 2,
+              },
+              '&:active': {
+                transform: 'scale(0.95)',
+              }
+            }}
+          > 
+            Cadastrar Novo Produto 
+          </Button>
+        </Box>
 
         <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', fontWeight: 'bold' }}> Adicionar por Código </Typography>
         <form onSubmit={handleBarcodeSubmit}>
@@ -221,26 +248,18 @@ export default function StockReceiptTab() {
                         <TextField fullWidth label="Venda (R$)" type="number" value={item.preco_venda} size="small" disabled={true} />
                       </Box>
 
-                      <Box display="flex" gap={1} alignItems="center">
-                        <IconButton size="small" onClick={() => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, i.quantity - 1)} : i))}>
-                          <Remove />
-                        </IconButton>
+                      <Box display="flex" gap={2} alignItems="center">
                         <TextField 
-                          fullWidth label="Quantidade" type="number" value={item.quantity} size="small"
-                          onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, Number(e.target.value))} : i))}
-                          onKeyDown={blockInvalidInteger}
-                          inputProps={{ min: 0, step: 1 }}
+                          fullWidth label="Quantidade" type="text" value={item.quantity} size="small"
+                          onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Number(e.target.value.replace(/\D/g, ''))} : i))}
+                          inputProps={{ inputMode: 'numeric' }}
                         />
-                        <IconButton size="small" onClick={() => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: i.quantity + 1} : i))}>
-                          <Add />
-                        </IconButton>
-                      </Box>
-
-                      <Box sx={{ textAlign: 'center', width: '100%', mt: 1 }}>
-                        <Typography variant="caption" color="text.secondary" display="block">Estoque Final</Typography>
-                        <Typography variant="body1" fontWeight="bold" color={item.tipoMovimento === 'entrada' ? 'success.main' : 'error.main'}>
-                          {item.currentStock + (item.tipoMovimento === 'entrada' ? item.quantity : -item.quantity)}
-                        </Typography>
+                        <Box sx={{ textAlign: 'center', width: '100%' }}>
+                          <Typography variant="caption" color="text.secondary" display="block">Estoque Final</Typography>
+                          <Typography variant="body1" fontWeight="bold" color={item.tipoMovimento === 'entrada' ? 'success.main' : 'error.main'}>
+                            {item.currentStock + (item.tipoMovimento === 'entrada' ? item.quantity : -item.quantity)}
+                          </Typography>
+                        </Box>
                       </Box>
                     </Box>
                   </CardContent>
@@ -273,19 +292,12 @@ export default function StockReceiptTab() {
                       
                       <TableCell align="center">
                         <Box display="flex" alignItems="center" gap={1} justifyContent="center">
-                          <IconButton size="small" onClick={() => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, i.quantity - 1)} : i))}>
-                            <Remove fontSize="small" />
-                          </IconButton>
                           <TextField 
-                            type="number" value={item.quantity} 
-                            onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Math.max(0, Number(e.target.value))} : i))} 
+                            type="text" value={item.quantity}
+                            onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: Number(e.target.value.replace(/\D/g, ''))} : i))}
                             size="small" sx={{ width: 80 }} 
-                            onKeyDown={blockInvalidInteger}
-                            inputProps={{ min: 0, step: 1 }}
+                            inputProps={{ inputMode: 'numeric' }}
                           />
-                          <IconButton size="small" onClick={() => setReceiptItems(receiptItems.map(i => i === item ? {...i, quantity: i.quantity + 1} : i))}>
-                            <Add fontSize="small" />
-                          </IconButton>
                         </Box>
                       </TableCell>
 
@@ -324,12 +336,6 @@ export default function StockReceiptTab() {
             <TextField label="Nome" fullWidth value={novoProduto.nome} onChange={(e) => setNovoProduto({ ...novoProduto, nome: e.target.value })} />
             <Box display="flex" gap={2}>
               <TextField 
-                label="Lote Inicial" fullWidth type="number" value={novoProduto.lote} 
-                onChange={(e) => setNovoProduto({ ...novoProduto, lote: e.target.value })} 
-                onKeyDown={blockInvalidInteger}
-                inputProps={{ min: 0, step: 1 }}
-              />
-              <TextField 
                 label="Preço Custo" type="number" fullWidth value={novoProduto.preco_custo} 
                 onChange={(e) => setNovoProduto({ ...novoProduto, preco_custo: e.target.value })} 
                 onKeyDown={blockInvalidDecimal}
@@ -341,6 +347,10 @@ export default function StockReceiptTab() {
               onChange={(e) => setNovoProduto({ ...novoProduto, preco: e.target.value })} 
               onKeyDown={blockInvalidDecimal}
               inputProps={{ min: 0, step: 0.01 }}
+            />
+            <ProductImagePicker
+              image={novoProduto.imagem}
+              onChange={(imagem) => setNovoProduto((produto) => ({ ...produto, imagem }))}
             />
           </Box>
         </DialogContent>

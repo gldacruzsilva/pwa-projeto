@@ -22,6 +22,8 @@ import { toast } from 'sonner';
 
 interface ComandaBanco {
   codc: number;
+  numero_exibicao: number;
+  data_operacional: string;
   Nick: string;
   valor_total: string | number;
   data_venda: string;
@@ -202,7 +204,7 @@ const filteredOrders = orders.filter(order => {
                     </Box>
 
                     <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
-                      Comanda #{order.codc}
+                      Comanda #{order.numero_exibicao}
                     </Typography>
                     
                     <Box sx={{ flexGrow: 1 }} />

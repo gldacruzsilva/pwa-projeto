@@ -31,7 +31,7 @@ DB_NAME=banco_campo
 
 > Verifique se a senha e o nome do banco estão corretos no seu ambiente antes de iniciar o backend.
 
-Para criar um banco novo, importe `Banco de dados/banco_campo.sql`. Se estiver atualizando uma instalação que ainda usa a coluna `Pagamento.tipo_pagamento`, execute uma única vez `Banco de dados/migracao_tipo_pagamento.sql` antes de iniciar o backend atualizado.
+Para criar um banco novo, importe `Banco de dados/banco_campo.sql`. Em instalações existentes com MySQL 8 ou superior, execute uma única vez `Banco de dados/migracao_numero_exibicao_comanda.sql` antes de iniciar o backend atualizado; essa migração preserva os IDs internos e atribui números de exibição por período operacional (das 6h às 5h59). Relacionamentos, consultas de auditoria e associações dos relatórios continuam usando o ID interno. Execute também `Banco de dados/migracao_imagens_produto.sql` para habilitar fotos dos produtos. Se o banco ainda usa a coluna `Pagamento.tipo_pagamento`, execute também `Banco de dados/migracao_tipo_pagamento.sql`.
 
 ---
 

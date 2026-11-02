@@ -1,12 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Box,
   Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, IconButton, TextField, Tabs, Tab,
-  Grid, Card, CardContent, Chip, Autocomplete, Alert,
+  TableHead, TableRow, IconButton, TextField,
+  Grid, Card, CardContent, Autocomplete, Avatar, Tooltip,
   useMediaQuery, useTheme
 } from '@mui/material';
-import { Close, Add, Remove, Delete, Payment, QrCodeScanner, TrendingUp } from '@mui/icons-material';
+import { Close, Add, Remove, Delete, Payment, Inventory2, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
 import PaymentDialog from './PaymentDialog';
 
@@ -22,6 +22,7 @@ interface ProdutoBanco {
   preco_venda?: number;
   qtde_estoque: number;
   lote?: string;
+  imagem?: string | null;
 }
 
 interface ItemComanda {
@@ -35,6 +36,7 @@ interface ItemComanda {
 interface ComandaDetalhada {
   codv?: number;
   codc?: number;
+  numero_exibicao?: number;
   Nick?: string;
   nick?: string;
   data_venda: string;
@@ -45,27 +47,25 @@ interface ComandaDetalhada {
 export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialogProps) {
   const [order, setOrder] = useState<ComandaDetalhada | null>(null);
   const [products, setProducts] = useState<ProdutoBanco[]>([]);
+  const [bestSellingProducts, setBestSellingProducts] = useState<ProdutoBanco[]>([]);
   
-  const [addMode, setAddMode] = useState<'barcode' | 'search' | 'popular'>('barcode');
-  const [barcode, setBarcode] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [selectedProduct, setSelectedProduct] = useState<ProdutoBanco | null>(null);
   const [openPayment, setOpenPayment] = useState(false);
   
   const [ativoToDelete, setItemToDelete] = useState<{ codp: number, nome: string, lote: string } | null>(null);
 
-  // 🟢 ESTADO NOVO: Memória cronológica de inserção dos itens
   const [itemHistory, setItemHistory] = useState<string[]>([]);
 
-  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const fetchData = async () => {
     try {
-      const [resOrder, resProducts] = await Promise.all([
+      const [resOrder, resProducts, resBestSellingProducts] = await Promise.all([
         fetch(`/api/comandas/${orderId}`),
-        fetch(`/api/produtos`)
+        fetch(`/api/produtos`),
+        fetch(`/api/produtos/mais-vendidos`)
       ]);
 
       if (resOrder.ok) setOrder(await resOrder.json());
@@ -73,6 +73,13 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
       if (resProducts.ok) {
         const data = await resProducts.json();
         setProducts(Array.isArray(data) ? data : data.produtos || data.data || []);
+      }
+
+      if (resBestSellingProducts.ok) {
+        const data = await resBestSellingProducts.json();
+        setBestSellingProducts(Array.isArray(data) ? data : data.produtos || data.data || []);
+      } else {
+        toast.error('Erro ao carregar os produtos mais vendidos.');
       }
 
     } catch (error) {
@@ -84,30 +91,18 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
     fetchData();
   }, [orderId]);
 
-  // 🟢 LÓGICA DE ORDENAÇÃO FIXA E NUMERAÇÃO
   useEffect(() => {
     if (order?.itens) {
       setItemHistory(prev => {
         const currentKeys = order.itens.map(i => `${i.codp}-${i.lote}`);
-        // Mantém a ordem dos que já estavam na lista
         const filteredPrev = prev.filter(key => currentKeys.includes(key));
-        // Descobre os itens novos recém-chegados
         const novos = currentKeys.filter(key => !filteredPrev.includes(key));
         
-        // Se nada mudou, devolve a mesma lista para não piscar a tela
         if (novos.length === 0 && filteredPrev.length === prev.length) return prev;
-        
-        // Os itens novos entram sempre no final (ganhando a numeração mais alta)
         return [...filteredPrev, ...novos];
       });
     }
   }, [order]);
-
-  useEffect(() => {
-    if (addMode === 'barcode' && barcodeInputRef.current && !isMobile) {
-      barcodeInputRef.current.focus();
-    }
-  }, [addMode, isMobile]);
 
   const blockInvalidInteger = (e: React.KeyboardEvent) => {
     if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) e.preventDefault();
@@ -116,9 +111,8 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
   if (!order) return null;
 
   const nomeCliente = order.Nick || order.nick || 'Sem nome';
-  const codigoComanda = order.codv || order.codc || orderId;
-  const popularProducts = [...products].slice(0, 6);
-
+  const codigoComanda = order.numero_exibicao ?? order.codv ?? order.codc ?? orderId;
+  
   const handleAddItem = async (codp: number, qtde: number, nome: string, lote: string) => {
     try {
       const response = await fetch(`/api/comandas/${orderId}/itens`, {
@@ -179,25 +173,6 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
     }
   };
 
-  const handleBarcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!barcode.trim()) return toast.error('Digite um código de barras');
-
-    const product = products.find(p => p.codp.toString() === barcode.trim());
-    if (!product) {
-      toast.error('Produto não encontrado');
-      setBarcode('');
-      return;
-    }
-
-    const qty = parseInt(quantity);
-    if (qty > 0) handleAddItem(product.codp, qty, product.nome, product.lote || '1');
-    
-    setBarcode('');
-    setQuantity('1');
-    if (!isMobile) barcodeInputRef.current?.focus();
-  };
-
   const handleSearchAdd = () => {
     if (!selectedProduct) return toast.error('Selecione um produto');
     
@@ -214,15 +189,14 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
   const totalPaid = Number((order as any).totalPaid) || 0; 
   const remaining = total - totalPaid;
 
-  // 🟢 AQUI ACONTECE A MÁGICA VISUAL: Atribui o número e vira a lista de cabeça para baixo!
   const itensOrdenados = [...itemHistory]
     .map((key, index) => {
       const item = order.itens.find(i => `${i.codp}-${i.lote}` === key);
       if (!item) return null;
-      return { ...item, numeroSequencia: index + 1 }; // O mais antigo ganha 1, o próximo ganha 2...
+      return { ...item, numeroSequencia: index + 1 };
     })
     .filter((item): item is (ItemComanda & { numeroSequencia: number }) => item !== null)
-    .reverse(); // Ao inverter, o número maior (mais recente) vai para o topo da lista.
+    .reverse();
 
   return (
     <>
@@ -238,157 +212,141 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
               </Typography>
             </Box>
             <IconButton 
+                size="small"
                 onClick={onClose} 
                 sx={{ 
                   color: '#ef4444', 
                   bgcolor: 'rgba(239, 68, 68, 0.15)', 
+                  p: 0.5,
                   '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.25)' } 
                 }}
               >
-                <Close />
+                <Close fontSize="small" />
             </IconButton>
           </Box>
         </DialogTitle>
 
         <DialogContent sx={{ p: { xs: 2, sm: 3 }, pt: { xs: 2, sm: 3 } }}>
           
-          <Box sx={{ mb: 4 }}>
+          <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, fontSize: '1.1rem' }}>Lançar Produtos</Typography>
 
-            <Tabs 
-              value={addMode} 
-              onChange={(_, v) => setAddMode(v)} 
-              variant="scrollable"
-              scrollButtons="auto"
-              allowScrollButtonsMobile
-              sx={{ mb: 3, minHeight: '40px', '& .MuiTab-root': { minHeight: '40px', textTransform: 'none', fontWeight: 500, px: { xs: 1, sm: 2 } } }}
-            >
-              <Tab icon={<QrCodeScanner sx={{ fontSize: 20 }} />} iconPosition="start" label="Código" value="barcode" />
-              <Tab icon={<Add sx={{ fontSize: 20 }} />} iconPosition="start" label="Pesquisar" value="search" />
-              <Tab icon={<TrendingUp sx={{ fontSize: 20 }} />} iconPosition="start" label="Sugestões" value="popular" />
-            </Tabs>
-
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: { xs: 'stretch', sm: 'flex-start' } }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, mb: 2 }}>
               <TextField
-                label="Quantidade"
+                label="Qtd"
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 onKeyDown={blockInvalidInteger}
                 inputProps={{ min: 1, inputMode: 'numeric' }}
                 size="small"
-                sx={{ width: { xs: '100%', sm: '100px' } }}
+                sx={{ width: { xs: '100%', sm: '80px' } }}
               />
 
-              <Box sx={{ flexGrow: 1 }}>
-                {addMode === 'barcode' && (
-                  <form onSubmit={handleBarcodeSubmit} style={{ display: 'flex', gap: '8px', flexDirection: isMobile ? 'column' : 'row' }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Código de Barras"
-                      value={barcode}
-                      onChange={(e) => setBarcode(e.target.value)}
-                      inputRef={barcodeInputRef}
-                      placeholder="Escaneie o produto..."
-                    />
-                    <Button type="submit" variant="contained" disableElevation fullWidth={isMobile}>Inserir</Button>
-                  </form>
-                )}
-
-                {addMode === 'search' && (
-                  <Box display="flex" gap={1} flexDirection={{ xs: 'column', sm: 'row' }}>
-                    <Autocomplete
-                      fullWidth
-                      size="small"
-                      options={products}
-                      isOptionEqualToValue={(option, value) => option.codp === value.codp && option.lote === value.lote}
-                      getOptionLabel={(option) => 
-                        `${option.nome ?? 'Sem nome'} - R$ ${Number(option.preco_venda || 0).toFixed(2)} (Est: ${option.qtde_estoque ?? 0})`
-                      }
-                      renderInput={(params) => <TextField {...params} label="Buscar pelo nome..." variant="outlined" />}
-                      value={selectedProduct}
-                      onChange={(_, newValue) => setSelectedProduct(newValue)}
-                    />
-                    <Button variant="contained" disableElevation onClick={handleSearchAdd} fullWidth={isMobile}>Inserir</Button>
+              <Autocomplete
+                fullWidth
+                size="small"
+                options={products}
+                isOptionEqualToValue={(option, value) => option.codp === value.codp && option.lote === value.lote}
+                getOptionLabel={(option) => 
+                  `${option.nome ?? 'Sem nome'} R$ ${Number(option.preco_venda || 0).toFixed(2)} (Est: ${option.qtde_estoque ?? 0})`
+                }
+                renderOption={(props, product) => (
+                  <Box component="li" {...props} key={`${product.codp}-${product.lote}`}>
+                    <Avatar
+                      src={product.imagem || undefined}
+                      variant="rounded"
+                      sx={{ width: 32, height: 32, mr: 1.5, bgcolor: 'action.hover' }}
+                    >
+                      <Inventory2 fontSize="small" />
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight={600} noWrap>{product.nome || 'Sem nome'}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        R$ {Number(product.preco_venda || 0).toFixed(2)} · Estoque: {product.qtde_estoque ?? 0}
+                      </Typography>
+                    </Box>
                   </Box>
                 )}
+                renderInput={(params) => <TextField {...params} label="Pesquisar produto pelo nome..." variant="outlined" />}
+                value={selectedProduct}
+                onChange={(_, newValue) => setSelectedProduct(newValue)}
+              />
+              <Button variant="contained" disableElevation onClick={handleSearchAdd} sx={{ minWidth: '100px' }} fullWidth={isMobile}>
+                Inserir
+              </Button>
+            </Box>
 
-                {addMode === 'popular' && (
-                  <Grid container spacing={1}>
-                    {popularProducts.map((product) => (
-                      <Grid size={{ xs: 6, sm: 4 }} key={`${product.codp}-${product.lote}`}>
-                        <Card 
-                          elevation={0}
-                          sx={{ 
-                            border: 1, 
-                            borderColor: 'divider', 
-                            cursor: 'pointer', 
-                            bgcolor: 'background.default',
-                            height: '100%',
-                            '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' } 
-                          }}
-                          onClick={() => handleAddItem(product.codp, parseInt(quantity) || 1, product.nome, product.lote || '1')}
+            <Box sx={{ maxHeight: 150, overflowY: 'auto', pr: 1, pb: 1 }}>
+              <Grid container spacing={1}>
+                {bestSellingProducts.map((product) => (
+                  <Grid size={{ xs: 12, sm: 6, md: 4 }} key={`${product.codp}-${product.lote}`}>
+                    <Card 
+                      elevation={0}
+                      sx={{ 
+                        border: 1, 
+                        borderColor: 'divider', 
+                        cursor: 'pointer', 
+                        bgcolor: 'background.default',
+                        transition: 'all 0.1s',
+                        '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover', transform: 'scale(0.98)' },
+                        '&:active': { transform: 'scale(0.95)' }
+                      }}
+                      onClick={() => handleAddItem(product.codp, parseInt(quantity) || 1, product.nome, product.lote || '1')}
+                    >
+                      <CardContent sx={{ p: '8px !important', display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Avatar
+                          src={product.imagem || undefined}
+                          variant="rounded"
+                          sx={{ width: 32, height: 32, bgcolor: 'action.hover' }}
                         >
-                          <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-                            <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {product.nome}
+                          <Inventory2 sx={{ fontSize: 18 }} />
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {product.nome}
+                          </Typography>
+                          <Box display="flex" gap={1} alignItems="center">
+                            <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main', lineHeight: 1 }}>
+                              R$ {Number(product.preco_venda || 0).toFixed(2)}
                             </Typography>
-                            <Box display="flex" flexDirection="column" gap={0.5} alignItems="center">
-                              <Chip 
-                                label={`R$ ${Number(product.preco_venda || 0).toFixed(2)}`} 
-                                size="small" 
-                                color="primary" 
-                                variant="outlined" 
-                                sx={{ height: '20px', fontSize: '0.7rem' }} 
-                              />
-                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                Est: {product.qtde_estoque}
-                              </Typography>
-                            </Box>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    ))}
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', lineHeight: 1 }}>
+                              Est: {product.qtde_estoque}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </CardContent>
+                    </Card>
                   </Grid>
-                )}
-              </Box>
+                ))}
+              </Grid>
             </Box>
           </Box>
 
-          <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 3, mb: 4 }}>
+          <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, fontSize: '1.1rem' }}>Itens na Comanda</Typography>
 
-            {itensOrdenados.length === 0 ? (
-              <Alert severity="info" sx={{ mb: 4, borderRadius: '8px' }}>
-                Nenhum ativo adicionado ainda. Use as opções acima para lançar produtos.
-              </Alert>
-            ) : (
+            {itensOrdenados.length > 0 && (
               <>
                 {isMobile ? (
-                  <Box display="flex" flexDirection="column" gap={2} mb={2}>
-                    {/* 🟢 O MAP AGORA USA A LISTA ORDENADA E FIXA */}
+                  <Box display="flex" flexDirection="column" gap={1.5} mb={1}>
                     {itensOrdenados.map((ativo) => {
                       const valorTotalDesteItem = Number(ativo.valor_unit) * Number(ativo.qtde);
-                      // TRAVA MATEMÁTICA PROTEGIDA
                       const bloqueiaDiminuir = Number(ativo.qtde) <= 1 || (total - Number(ativo.valor_unit)) < totalPaid;
                       const bloqueiaRemover = (total - valorTotalDesteItem) < totalPaid;
 
                       return (
                         <Card variant="outlined" key={`${ativo.codp}-${ativo.lote}`}>
-                          <CardContent sx={{ pb: '16px !important', p: 2 }}>
+                          <CardContent sx={{ pb: '16px !important', p: 1.5 }}>
                             <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1.5}>
-                              
-                              {/* 🟢 VISUAL DO NÚMERO NO CELULAR */}
                               <Box display="flex" alignItems="center" gap={1.5}>
-                                <Box sx={{ width: 26, height: 26, borderRadius: '50%', bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                <Box sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold' }}>
                                   {ativo.numeroSequencia}
                                 </Box>
-                                <Typography variant="subtitle1" fontWeight="bold" lineHeight={1.2}>
+                                <Typography variant="subtitle2" fontWeight="bold" lineHeight={1.2}>
                                   {ativo.nome}
                                 </Typography>
                               </Box>
-
                               <IconButton 
                                 size="small" 
                                 color="error" 
@@ -431,17 +389,16 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
                     })}
                   </Box>
                 ) : (
-                  <TableContainer sx={{ mb: 4, border: 1, borderColor: 'divider', borderRadius: '8px' }}>
-                    <Table size="small">
-                      <TableHead sx={{ bgcolor: 'action.hover' }}>
+                  <TableContainer sx={{ mb: 2, border: 1, borderColor: 'divider', borderRadius: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
                         <TableRow>
-                          {/* 🟢 COLUNA DO NÚMERO NO PC */}
-                          <TableCell align="center" sx={{ fontWeight: 600, width: 40 }}>#</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Produto</TableCell>
-                          <TableCell align="center" sx={{ fontWeight: 600 }}>Qtd</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600 }}>Preço Unit.</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600 }}>Subtotal</TableCell>
-                          <TableCell align="center" sx={{ fontWeight: 600 }}>Remover</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 600, width: 40, bgcolor: 'action.hover' }}>#</TableCell>
+                          <TableCell sx={{ fontWeight: 600, bgcolor: 'action.hover' }}>Produto</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 600, bgcolor: 'action.hover' }}>Qtd</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600, bgcolor: 'action.hover' }}>Preço Unit.</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600, bgcolor: 'action.hover' }}>Subtotal</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 600, bgcolor: 'action.hover' }}>Remover</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -452,8 +409,6 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
 
                           return (
                             <TableRow key={`${ativo.codp}-${ativo.lote}`}>
-                              
-                              {/* 🟢 VISUAL DO NÚMERO NO PC */}
                               <TableCell align="center">
                                 <Box sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: 'primary.main', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold' }}>
                                   {ativo.numeroSequencia}
@@ -502,12 +457,12 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
             )}
           </Box>
 
-          <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, fontSize: '1.1rem' }}>Resumo</Typography>
+          <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2 }}>
+            <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 600, fontSize: '1.1rem' }}>Resumo</Typography>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 4 }}>
                 <Card elevation={0} sx={{ border: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
-                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Typography variant="body2" color="text.secondary" fontWeight={500}>Valor Total</Typography>
                     <Typography variant="h6" fontWeight={700}>R$ {total.toFixed(2)}</Typography>
                   </CardContent>
@@ -515,7 +470,7 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
                 <Card elevation={0} sx={{ border: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
-                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Typography variant="body2" color="text.secondary" fontWeight={500}>Já Pago</Typography>
                     <Typography variant="h6" color="success.main" fontWeight={700}>R$ {totalPaid.toFixed(2)}</Typography>
                   </CardContent>
@@ -523,7 +478,7 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
                 <Card elevation={0} sx={{ border: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
-                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Typography variant="body2" color="text.secondary" fontWeight={500}>Restante</Typography>
                     <Typography variant="h6" color={remaining > 0 ? 'warning.main' : 'success.main'} fontWeight={700}>
                       R$ {remaining.toFixed(2)}
@@ -535,7 +490,17 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
           </Box>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2, borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
+        <DialogActions sx={{ p: 2, borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper', justifyContent: 'space-between' }}>
+          <Tooltip
+            title="Ajuste a quantidade e pesquise por um produto ou clique rapidamente em uma das sugestões para adicionar."
+            arrow
+            placement="top-start"
+          >
+            <IconButton size="small" aria-label="Ajuda sobre o funcionamento da comanda" sx={{ color: 'text.secondary' }}>
+              <HelpOutline fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
           <Button
             variant="contained"
             disableElevation
@@ -543,7 +508,7 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
             onClick={() => setOpenPayment(true)}
             disabled={order.itens.length === 0}
             fullWidth={isMobile}
-            sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600, py: isMobile ? 1.5 : 1 }}
+            sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600, py: isMobile ? 1.5 : 1, width: isMobile ? '100%' : 'auto' }}
           >
             Pagar Comanda
           </Button>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-  Box, TextField, Button, Paper, Typography, Table, TableBody, TableCell, 
+  Box, TextField, Button, Paper, Typography, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, IconButton, Alert, Autocomplete, 
   Dialog, DialogTitle, DialogContent, DialogActions, MenuItem,
   Card, CardContent, useMediaQuery, useTheme, 
@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { Add, Delete, AddCircleOutline, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
+import ProductImagePicker from '../../components/ProductImagePicker';
 
 export default function StockReceiptPage() {
   const [description, setDescription] = useState('');
@@ -16,7 +17,7 @@ export default function StockReceiptPage() {
   const [barcode, setBarcode] = useState('');
   const [productList, setProductList] = useState<any[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [novoProduto, setNovoProduto] = useState({ codp: '', nome: '', preco: '', preco_custo: '', lote: '1' });
+  const [novoProduto, setNovoProduto] = useState({ codp: '', nome: '', preco: '', preco_custo: '', imagem: '' });
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -51,8 +52,6 @@ export default function StockReceiptPage() {
     if (!novoProduto.codp.trim() || !novoProduto.nome.trim()) return toast.error('Preencha os campos obrigatórios!');
     
     if (Number(novoProduto.codp) <= 0) return toast.error('O Código não pode ser zero.');
-    if (Number(novoProduto.lote) < 0) return toast.error('O Lote não pode ser negativo.');
-
     // 🟢 Trata vírgulas antes de salvar no banco
     const precoVendaFMT = Number(String(novoProduto.preco).replace(',', '.') || 0);
     const precoCustoFMT = Number(String(novoProduto.preco_custo).replace(',', '.') || 0);
@@ -66,8 +65,9 @@ export default function StockReceiptPage() {
           nome: novoProduto.nome, 
           preco_venda: precoVendaFMT,
           preco_custo: precoCustoFMT, 
-          lote: novoProduto.lote || '1', 
+          lote: '1',
           qtde_estoque: 0,
+          imagem: novoProduto.imagem || null,
           descricao: 'ENTRADA: Cadastro de Novo Produto no Sistema', 
           codu: usuarioAtual.codu 
         })
@@ -75,7 +75,7 @@ export default function StockReceiptPage() {
       if (resposta.ok) {
         toast.success('Produto cadastrado!');
         setModalOpen(false);
-        setNovoProduto({ codp: '', nome: '', preco: '', preco_custo: '', lote: '1' });
+        setNovoProduto({ codp: '', nome: '', preco: '', preco_custo: '', imagem: '' });
         buscarProdutos();
       } else { 
         const errorData = await resposta.json().catch(() => ({}));
@@ -494,11 +494,6 @@ export default function StockReceiptPage() {
             />
             <Box display="flex" gap={2}>
               <TextField 
-                label="Lote Inicial" fullWidth type="text" value={novoProduto.lote} 
-                onChange={(e) => setNovoProduto({ ...novoProduto, lote: e.target.value.replace(/\D/g, '') })} 
-                inputProps={{ inputMode: 'numeric' }} 
-              />
-              <TextField 
                 label="Preço Custo (R$)" fullWidth type="text" value={novoProduto.preco_custo} 
                 onChange={(e) => setNovoProduto({ ...novoProduto, preco_custo: e.target.value })} 
                 onKeyDown={blockInvalidDecimal}
@@ -510,6 +505,10 @@ export default function StockReceiptPage() {
               onChange={(e) => setNovoProduto({ ...novoProduto, preco: e.target.value })} 
               onKeyDown={blockInvalidDecimal}
               inputProps={{ inputMode: 'decimal' }} 
+            />
+            <ProductImagePicker
+              image={novoProduto.imagem}
+              onChange={(imagem) => setNovoProduto((produto) => ({ ...produto, imagem }))}
             />
           </Box>
         </DialogContent>

@@ -23,6 +23,7 @@ import {
   InputAdornment,
   Tooltip,
   IconButton,
+  CircularProgress,
 } from '@mui/material';
 import { ExpandMore, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
@@ -44,6 +45,7 @@ interface RegistroAuditoria {
 
 export default function AuditHistoryPage() {
   const [auditRecords, setAuditRecords] = useState<RegistroAuditoria[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
 
@@ -52,6 +54,7 @@ export default function AuditHistoryPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const buscarAuditoria = async () => {
+    setIsLoading(true);
     try {
       const [resEstoque, resAtivos] = await Promise.all([
         fetch('/api/auditoria/estoque').catch(() => null),
@@ -97,7 +100,11 @@ export default function AuditHistoryPage() {
       });
 
       setAuditRecords(dadosComEstoqueAnterior.reverse());
-    } catch (erro) { toast.error('Erro de conexão com o servidor Node.js.'); }
+    } catch (erro) {
+      toast.error('Erro de conexão com o servidor Node.js.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => { buscarAuditoria(); }, []);
@@ -180,7 +187,11 @@ export default function AuditHistoryPage() {
           />
         </Box>
       </Paper>
-      {filteredRecords.length === 0 ? (
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress size={28} />
+        </Box>
+      ) : filteredRecords.length === 0 ? (
         <Alert severity="info">Nenhum registro encontrado para os filtros selecionados.</Alert>
       ) : (
         <>

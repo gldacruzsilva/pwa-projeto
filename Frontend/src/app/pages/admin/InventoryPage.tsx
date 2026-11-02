@@ -3,11 +3,11 @@ import {
   Paper, Typography, Button, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, TableFooter, Dialog, 
   DialogTitle, DialogContent, DialogActions, TextField, 
-  IconButton, Box, Card, CardContent, Divider, useMediaQuery, useTheme, Alert, Tooltip 
+  IconButton, Box, Card, CardContent, Divider, useMediaQuery, useTheme, Alert, Tooltip
 } from '@mui/material';
-// 🟢 1. IMPORTAMOS O ÍCONE 'HelpOutline' (?) AQUI:
 import { Edit, Delete, RestoreFromTrash, Info, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
+import ProductImagePicker from '../../components/ProductImagePicker';
 
 interface Product {
   id: number;
@@ -17,6 +17,7 @@ interface Product {
   price: number;
   costPrice: number;
   batch: string;
+  image?: string | null;
 }
 
 const formatarMoedaBrasileira = (valor: number): string => {
@@ -34,7 +35,7 @@ export default function InventoryPage() {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState({ code: '', name: '', quantity: '', price: '', costPrice: '', batch: '' });
+  const [formData, setFormData] = useState({ code: '', name: '', quantity: '', price: '', costPrice: '', batch: '', image: '' });
 
   const [openTrashDialog, setOpenTrashDialog] = useState(false);
   const [trashProducts, setTrashProducts] = useState<Product[]>([]);
@@ -55,6 +56,7 @@ export default function InventoryPage() {
         const produtosFormatados = produtosAtivos.map((item: any) => ({
           id: item.codp, code: item.codp.toString(), name: item.nome, quantity: item.qtde_estoque,
           price: Number(item.preco_venda ?? 0), costPrice: Number(item.preco_custo ?? 0), batch: item.lote || '1',
+          image: item.imagem || '',
         }));
         setProducts(produtosFormatados);
       } else {
@@ -76,6 +78,7 @@ export default function InventoryPage() {
         const produtosFormatados = produtosInativos.map((item: any) => ({
           id: item.codp, code: item.codp.toString(), name: item.nome, quantity: item.qtde_estoque,
           price: Number(item.preco_venda ?? 0), costPrice: Number(item.preco_custo ?? 0), batch: item.lote || '1',
+          image: item.imagem || '',
         }));
         setTrashProducts(produtosFormatados);
       }
@@ -90,13 +93,13 @@ export default function InventoryPage() {
 
   const handleOpenDialog = (product: Product) => {
     setEditingProduct(product);
-    setFormData({ code: product.code, name: product.name, quantity: product.quantity.toString(), price: product.price.toString(), costPrice: product.costPrice.toString(), batch: product.batch });
+    setFormData({ code: product.code, name: product.name, quantity: product.quantity.toString(), price: product.price.toString(), costPrice: product.costPrice.toString(), batch: product.batch, image: product.image || '' });
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false); setEditingProduct(null);
-    setFormData({ code: '', name: '', quantity: '', price: '', costPrice: '', batch: '' });
+    setFormData({ code: '', name: '', quantity: '', price: '', costPrice: '', batch: '', image: '' });
   };
 
   const handleSave = async () => {
@@ -113,6 +116,7 @@ export default function InventoryPage() {
             preco_custo: editingProduct.costPrice, 
             lote: editingProduct.batch, 
             lote_original: editingProduct.batch,
+            imagem: formData.image || null,
             codu: usuarioLogado.codu
           })
         });
@@ -319,6 +323,10 @@ export default function InventoryPage() {
             </Box>
             <TextField fullWidth label="Quantidade" type="number" value={formData.quantity} disabled helperText="Para alterar a quantidade, utilize a aba de Movimentação de Estoque." />
             <TextField fullWidth label="Preço de Comanda (R$)" type="number" inputProps={{ step: '0.01' }} value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} required />
+            <ProductImagePicker
+              image={formData.image}
+              onChange={(image) => setFormData((current) => ({ ...current, image }))}
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
