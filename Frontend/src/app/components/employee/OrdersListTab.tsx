@@ -20,6 +20,12 @@ import { Search, Delete, ReceiptLong } from '@mui/icons-material';
 import OrderDetailDialog from './OrderDetailDialog';
 import { toast } from 'sonner';
 
+interface OrdersListTabProps {
+  initialOrderId: number | null;
+  onOrderOpened: () => void;
+  onRegisterProduct: (barcode: string) => void;
+}
+
 interface ComandaBanco {
   codc: number;
   numero_exibicao: number;
@@ -27,10 +33,12 @@ interface ComandaBanco {
   Nick: string;
   valor_total: string | number;
   data_venda: string;
+  status: number;
   valor_pago?: string | number;
+  itens_restantes?: number | string;
 }
 
-export default function OrdersListTab() {
+export default function OrdersListTab({ initialOrderId, onOrderOpened, onRegisterProduct }: OrdersListTabProps) {
   const [orders, setOrders] = useState<ComandaBanco[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
@@ -56,6 +64,12 @@ export default function OrdersListTab() {
     const interval = setInterval(fetchOrders, 2000); 
     return () => clearInterval(interval); 
   }, []);
+
+  useEffect(() => {
+    if (initialOrderId === null) return;
+    setSelectedOrderId(initialOrderId);
+    onOrderOpened();
+  }, [initialOrderId, onOrderOpened]);
 
   const executeDeleteOrder = async () => {
     if (!orderToDelete) return;
@@ -126,7 +140,10 @@ const filteredOrders = orders.filter(order => {
             const valorPago = Number(order.valor_pago) || 0;
             const restante = valorTotal - valorPago;
             
-            const comandaZerada = valorTotal === 0;
+            const saldoPendenteCentavos = Math.round((valorTotal - valorPago) * 100);
+            const comandaZerada = saldoPendenteCentavos <= 0;
+            const comandaExcluivel = Number(order.status) === 1 && comandaZerada;
+            const statusLabel = valorTotal === 0 && valorPago <= 0 ? 'Nova' : 'Aberta';
             const temPagamentoParcial = valorPago > 0 && restante > 0;
 
             return (
@@ -175,7 +192,7 @@ const filteredOrders = orders.filter(order => {
                       
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexShrink: 0 }}>
                         <Chip
-                          label={comandaZerada ? "Nova" : "Aberta"}
+                          label={statusLabel}
                           size="small"
                           sx={{ 
                             fontWeight: 600,
@@ -187,14 +204,15 @@ const filteredOrders = orders.filter(order => {
                               : (theme => theme.palette.mode === 'dark' ? '#60a5fa' : '#3b82f6')
                           }}
                         />
-                        {comandaZerada && (
+                        {comandaExcluivel && (
                           <IconButton
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation(); 
-                              // 🟢 Abre o Modal ao invés do window.confirm nativo
-                              setOrderToDelete({ id: order.codc, name: order.Nick });
+                              setOrderToDelete({ id: order.codc, name: nomeCliente });
                             }}
+                            aria-label={`Excluir comanda de ${nomeCliente}`}
+                            title="Excluir comanda zerada"
                             sx={{ color: '#ef4444', padding: '4px', '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)' } }}
                           >
                             <Delete sx={{ fontSize: 18 }} />
@@ -212,7 +230,7 @@ const filteredOrders = orders.filter(order => {
                     <Box sx={{ pt: 2, mt: 1, borderTop: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                       <Box>
                         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                          {temPagamentoParcial ? 'Restante:' : 'Valor Total:'}
+                          {valorPago > 0 ? 'Restante:' : 'Valor Total:'}
                         </Typography>
                         {temPagamentoParcial && (
                           <Typography variant="caption" sx={{ color: '#10b981', fontWeight: 600 }}>
@@ -248,6 +266,7 @@ const filteredOrders = orders.filter(order => {
             setSelectedOrderId(null);
             fetchOrders(); 
           }}
+          onRegisterProduct={onRegisterProduct}
         />
       )}
 
@@ -263,6 +282,7 @@ const filteredOrders = orders.filter(order => {
         <DialogContent>
           <Typography variant="body1">
             Deseja realmente excluir a comanda de <strong>{orderToDelete?.name}</strong>? Esta ação não pode ser desfeita.
+            Se houver pagamentos registrados, eles também serão excluídos.
           </Typography>
         </DialogContent>
         <DialogActions>

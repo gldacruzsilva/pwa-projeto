@@ -1,4 +1,4 @@
-USE `banco_campo`;
+USE banco_campo;
 
 ALTER TABLE `Comanda`
   ADD COLUMN `numero_exibicao` INT NULL AFTER `codc`,

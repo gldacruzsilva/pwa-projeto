@@ -158,27 +158,17 @@ export default function StockReceiptPage() {
       const qtyNum = Number(item.quantity);
       const custoNum = Number(String(item.costPrice).replace(',', '.'));
       const precoNum = Number(String(item.preco_venda).replace(',', '.'));
-      const loteNum = Number(item.batch);
 
       if (isNaN(qtyNum) || qtyNum <= 0) return toast.error(`Atenção: A quantidade de "${item.productName}" deve ser MAIOR que zero!`);
-      if (isNaN(loteNum) || loteNum < 0) return toast.error(`Atenção: Lote de "${item.productName}" inválido.`);
       if (isNaN(custoNum) || custoNum < 0) return toast.error(`Atenção: Custo de "${item.productName}" inválido.`);
       if (isNaN(precoNum) || precoNum < 0) return toast.error(`Atenção: Preço Comanda de "${item.productName}" inválido.`);
 
       const novoEstoque = item.currentStock + (item.tipoMovimento === 'entrada' ? qtyNum : -qtyNum);
       if (novoEstoque < 0) return toast.error(`Atenção: O estoque final de ${item.productName} não pode ficar negativo (${novoEstoque}).`);
-
-      if (item.tipoMovimento === 'entrada') {
-        const mudouCusto = custoNum !== Number(item.originalCostPrice);
-        const mudouLote = String(item.batch) !== String(item.originalBatch);
-        if (mudouCusto && !mudouLote) return toast.error(`Atenção: Custo de "${item.productName}" mudou. Informe um NOVO LOTE.`);
-        if (mudouLote && !mudouCusto) return toast.error(`Atenção: Lote de "${item.productName}" mudou. Avalie se o custo se mantém.`);
-      }
     }
 
     try {
       const promessas = receiptItems.map(async (item) => {
-        const criarNovoLote = item.tipoMovimento === 'entrada' && String(item.batch) !== String(item.originalBatch);
         const prefixo = item.tipoMovimento.toUpperCase();
         const textoDescricao = `${prefixo}: ${description.trim() || 'Movimentação de estoque'}`;
         const qtyNum = Number(item.quantity);
@@ -188,40 +178,21 @@ export default function StockReceiptPage() {
         const precoVendaBD = Number(String(item.preco_venda).replace(',', '.'));
         const precoCustoBD = Number(String(item.costPrice).replace(',', '.'));
 
-        if (criarNovoLote) {
-          // 🟢 ROTA CORRIGIDA COM BARRA: /api/produtos
-          return fetch('/api/produtos', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              codp: parseInt(item.productCode), 
-              nome: item.productName, 
-              preco_venda: precoVendaBD, 
-              preco_custo: precoCustoBD, 
-              lote: item.batch, 
-              qtde_estoque: qtyNum,
-              descricao: textoDescricao, 
-              codu: usuarioAtual.codu 
-            })
-          });
-        } else {
-          // 🟢 ROTA CORRIGIDA COM BARRA: /api/produtos/...
-          return fetch(`/api/produtos/${item.productCode}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              nome: item.productName, 
-              preco_venda: precoVendaBD, 
-              qtde_estoque: novoEstoque,
-              qtde_movimento: qtyNum,
-              preco_custo: item.originalCostPrice, 
-              lote: item.batch, 
-              lote_original: item.originalBatch,
-              descricao: textoDescricao, 
-              codu: usuarioAtual.codu 
-            })
-          });
-        }
+        return fetch(`/api/produtos/${item.productCode}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nome: item.productName, 
+            preco_venda: precoVendaBD, 
+            qtde_estoque: novoEstoque,
+            qtde_movimento: qtyNum,
+            preco_custo: precoCustoBD, 
+            lote: item.originalBatch, 
+            lote_original: item.originalBatch,
+            descricao: textoDescricao, 
+            codu: usuarioAtual.codu 
+          })
+        });
       });
       
       const respostas = await Promise.all(promessas);
@@ -348,7 +319,7 @@ export default function StockReceiptPage() {
                             <MenuItem value="saida">Saída</MenuItem>
                           </TextField>
                           <TextField 
-                            fullWidth label="Lote" type="text" value={item.batch} size="small" disabled={item.tipoMovimento === 'saida'}
+                            fullWidth label="Lote" type="text" value={item.batch} size="small" disabled
                             onChange={(e) => handleIntegerChange(index, 'batch', e.target.value.replace(/\D/g, ''))}
                             inputProps={{ inputMode: 'numeric' }}
                           />
@@ -425,7 +396,7 @@ export default function StockReceiptPage() {
                         </TableCell>
                         <TableCell>
                           <TextField 
-                            type="text" value={item.batch} size="small" disabled={item.tipoMovimento === 'saida'} sx={{ width: 90 }}
+                            type="text" value={item.batch} size="small" disabled sx={{ width: 90 }}
                             onChange={(e) => handleIntegerChange(index, 'batch', e.target.value.replace(/\D/g, ''))} 
                             inputProps={{ inputMode: 'numeric' }}
                           />

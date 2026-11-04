@@ -1,4 +1,4 @@
-USE `banco_campo`;
+USE banco_campo;
 
 CREATE TABLE IF NOT EXISTS `TipoPagamento` (
   `codtp` INT NOT NULL AUTO_INCREMENT,

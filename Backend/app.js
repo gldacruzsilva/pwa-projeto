@@ -322,6 +322,18 @@ app.post('/produtos', async (req, res) => {
         if (!nome || nome.trim() === '') return res.status(400).json({ mensagem: 'Nome do produto é obrigatório.' });
         if (!validarImagemProduto(imagem)) return res.status(400).json({ mensagem: 'Imagem inválida ou muito grande.' });
 
+        const nomeNormalizado = nome.trim().toLocaleLowerCase('pt-BR');
+        const [produtosComMesmoNome] = await db.execute('SELECT nome FROM Produto WHERE nome IS NOT NULL');
+        const produtoComMesmoNome = produtosComMesmoNome.find(
+            produto => String(produto.nome).trim().toLocaleLowerCase('pt-BR') === nomeNormalizado
+        );
+
+        if (produtoComMesmoNome) {
+            return res.status(400).json({
+                detalhe: `Já existe um produto cadastrado com o nome "${produtoComMesmoNome.nome}".`
+            });
+        }
+
         if (codp === undefined || codp === null || String(codp).trim() === '') {
             return res.status(400).json({ detalhe: 'O código de barras é obrigatório.' });
         }
@@ -615,7 +627,12 @@ app.get('/comandas', async (req, res) => {
         const sql = `
             SELECT 
                 v.codc, v.numero_exibicao, v.data_operacional, v.nick, v.valor_total, v.data_venda, v.status,
-                COALESCE(SUM(p.valor), 0) AS valor_pago
+                COALESCE(SUM(p.valor), 0) AS valor_pago,
+                (
+                    SELECT COUNT(*)
+                    FROM ItemVenda iv
+                    WHERE iv.codc = v.codc
+                ) AS itens_restantes
             FROM Comanda v
             LEFT JOIN Pagamento p ON v.codc = p.codc
             WHERE v.status = 1
@@ -692,13 +709,66 @@ app.post('/comandas', async (req, res) => {
 });
 
 app.delete('/comandas/:id', async (req, res) => {
+    let connection;
+    let transactionStarted = false;
     try {
         const { id } = req.params;
-        const [resultado] = await db.execute('DELETE FROM Comanda WHERE codc = ?', [id]);
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+        transactionStarted = true;
+
+        const [comandas] = await connection.execute(
+            'SELECT status, valor_total FROM Comanda WHERE codc = ? FOR UPDATE',
+            [id]
+        );
+        if (comandas.length === 0) {
+            await connection.rollback();
+            transactionStarted = false;
+            return res.status(404).json({ mensagem: 'Comanda não encontrada.' });
+        }
+        if (Number(comandas[0].status) !== 1) {
+            await connection.rollback();
+            transactionStarted = false;
+            return res.status(400).json({ mensagem: 'Somente comandas abertas podem ser excluídas.' });
+        }
+
+        const [pagamentos] = await connection.execute(
+            'SELECT COALESCE(SUM(valor), 0) AS total_pago FROM Pagamento WHERE codc = ?',
+            [id]
+        );
+        const saldoPendenteCentavos = Math.round(
+            (Number(comandas[0].valor_total) - Number(pagamentos[0].total_pago)) * 100
+        );
+        if (saldoPendenteCentavos > 0) {
+            await connection.rollback();
+            transactionStarted = false;
+            return res.status(400).json({ mensagem: 'Não é possível excluir uma comanda com saldo pendente.' });
+        }
+
+        await connection.execute('DELETE FROM ItemVenda WHERE codc = ?', [id]);
+        await connection.execute('DELETE FROM Pagamento WHERE codc = ?', [id]);
+        const [resultado] = await connection.execute('DELETE FROM Comanda WHERE codc = ?', [id]);
+        if (resultado.affectedRows === 0) {
+            await connection.rollback();
+            transactionStarted = false;
+            return res.status(404).json({ mensagem: 'Comanda não encontrada.' });
+        }
+
+        await connection.commit();
+        transactionStarted = false;
         res.status(200).json({ mensagem: 'Comanda excluída!' });
     } catch (erro) { 
+        if (connection && transactionStarted) {
+            try {
+                await connection.rollback();
+            } catch (erroRollback) {
+                console.error('Erro ao desfazer a exclusão da comanda:', erroRollback);
+            }
+        }
         console.error(`Erro no DELETE /comandas/${req.params.id}:`, erro);
         res.status(500).json({ mensagem: 'Erro interno' }); 
+    } finally {
+        if (connection) connection.release();
     }
 });
 
@@ -1000,5 +1070,8 @@ app.put('/comandas/:id/fechar', async (req, res) => {
     }
 });
 
-const porta = 3000;
-app.listen(porta, '0.0.0.0', () => console.log(`🚀 Servidor rodando na porta ${porta} e aceitando conexões externas!`));
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+});

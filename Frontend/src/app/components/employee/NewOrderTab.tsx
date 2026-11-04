@@ -14,7 +14,7 @@ import { HelpOutline, PersonAddAlt1 } from '@mui/icons-material';
 import { toast } from 'sonner';
 
 interface NewOrderTabProps {
-  onOrderCreated: () => void;
+  onOrderCreated: (orderId: number) => void;
 }
 
 export default function NewOrderTab({ onOrderCreated }: NewOrderTabProps) {
@@ -42,9 +42,7 @@ export default function NewOrderTab({ onOrderCreated }: NewOrderTabProps) {
         const data = await response.json();
         toast.success(`Comanda #${data.numero_exibicao} criada com sucesso para ${customerName}!`);
         setCustomerName('');
-        
-        // Atualiza a lista de comandas na outra aba automaticamente
-        onOrderCreated(); 
+        onOrderCreated(Number(data.codc));
       } else {
         const errorData = await response.json();
         toast.error(errorData.mensagem || 'Erro ao criar a comanda.');
