@@ -3,20 +3,21 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Box,
   Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, IconButton, TextField,
-  Grid, Card, CardContent, Autocomplete, Avatar, Tooltip,
-  useMediaQuery, useTheme
+  Grid, Card, CardContent, Autocomplete, Avatar, Tooltip, DialogContentText,
+  InputAdornment, useMediaQuery, useTheme
 } from '@mui/material';
-import { Close, Add, Remove, Delete, Payment, Inventory2, HelpOutline } from '@mui/icons-material';
+import { Close, Add, Remove, Delete, Payment, Inventory2, HelpOutline, QrCodeScanner } from '@mui/icons-material';
 import { toast } from 'sonner';
 import PaymentDialog from './PaymentDialog';
 
 interface OrderDetailDialogProps {
   orderId: number;
   onClose: () => void;
+  onRegisterProduct: (barcode: string) => void;
 }
 
 interface ProdutoBanco {
-  codp: number;
+  codp: number | string;
   nome: string;
   preco_custo?: number;
   preco_venda?: number;
@@ -26,7 +27,7 @@ interface ProdutoBanco {
 }
 
 interface ItemComanda {
-  codp: number;
+  codp: number | string;
   nome: string;
   qtde: number | string;
   valor_unit: string;
@@ -44,16 +45,19 @@ interface ComandaDetalhada {
   itens: ItemComanda[];
 }
 
-export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialogProps) {
+export default function OrderDetailDialog({ orderId, onClose, onRegisterProduct }: OrderDetailDialogProps) {
   const [order, setOrder] = useState<ComandaDetalhada | null>(null);
   const [products, setProducts] = useState<ProdutoBanco[]>([]);
   const [bestSellingProducts, setBestSellingProducts] = useState<ProdutoBanco[]>([]);
   
   const [quantity, setQuantity] = useState('1');
+  const [productSearch, setProductSearch] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [barcodeToRegister, setBarcodeToRegister] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<ProdutoBanco | null>(null);
   const [openPayment, setOpenPayment] = useState(false);
   
-  const [ativoToDelete, setItemToDelete] = useState<{ codp: number, nome: string, lote: string } | null>(null);
+  const [ativoToDelete, setItemToDelete] = useState<{ codp: number | string, nome: string, lote: string } | null>(null);
 
   const [itemHistory, setItemHistory] = useState<string[]>([]);
 
@@ -113,7 +117,7 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
   const nomeCliente = order.Nick || order.nick || 'Sem nome';
   const codigoComanda = order.numero_exibicao ?? order.codv ?? order.codc ?? orderId;
   
-  const handleAddItem = async (codp: number, qtde: number, nome: string, lote: string) => {
+  const handleAddItem = async (codp: number | string, qtde: number, nome: string, lote: string) => {
     try {
       const response = await fetch(`/api/comandas/${orderId}/itens`, {
         method: 'POST',
@@ -133,7 +137,7 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
     }
   };
 
-  const handleUpdateQuantity = async (codp: number, lote: string, currentQty: number | string, delta: number) => {
+  const handleUpdateQuantity = async (codp: number | string, lote: string, currentQty: number | string, delta: number) => {
     const newQty = Number(currentQty) + delta;
     if (newQty <= 0) return;
 
@@ -174,20 +178,31 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
   };
 
   const handleSearchAdd = () => {
-    if (!selectedProduct) return toast.error('Selecione um produto');
-    
-    const qty = parseInt(quantity);
-    
-    if (qty > 0) {
-      handleAddItem(selectedProduct.codp, qty, selectedProduct.nome, selectedProduct.lote || '1');
-      setSelectedProduct(null);
-      setQuantity('1');
+    const quantidade = Number(quantity);
+    if (!Number.isInteger(quantidade) || quantidade <= 0) return toast.error('Informe uma quantidade válida.');
+
+    const codigo = productSearch.trim();
+    const product = selectedProduct || products.find((item) => String(item.codp) === codigo);
+
+    if (!product) {
+      if (/^\d+$/.test(codigo)) {
+        setBarcodeToRegister(codigo);
+        return;
+      }
+      return toast.error('Selecione um produto da lista ou informe um código de barras válido.');
     }
+
+    handleAddItem(product.codp, quantidade, product.nome, product.lote || '1');
+    setSelectedProduct(null);
+    setProductSearch('');
+    setQuantity('1');
   };
 
   const total = Number(order.valor_total) || 0;
   const totalPaid = Number((order as any).totalPaid) || 0; 
   const remaining = total - totalPaid;
+  const bloqueiaRemocaoPorPagamento = (valorRemovido: number) =>
+    Math.round((total - valorRemovido) * 100) < Math.round(totalPaid * 100);
 
   const itensOrdenados = [...itemHistory]
     .map((key, index) => {
@@ -247,6 +262,14 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
                 fullWidth
                 size="small"
                 options={products}
+                filterOptions={(options, { inputValue }) => {
+                  const search = inputValue.trim().toLocaleLowerCase('pt-BR');
+                  if (!search) return options;
+                  return options.filter((product) =>
+                    String(product.nome || '').toLocaleLowerCase('pt-BR').includes(search)
+                    || String(product.codp).includes(search)
+                  );
+                }}
                 isOptionEqualToValue={(option, value) => option.codp === value.codp && option.lote === value.lote}
                 getOptionLabel={(option) => 
                   `${option.nome ?? 'Sem nome'} R$ ${Number(option.preco_venda || 0).toFixed(2)} (Est: ${option.qtde_estoque ?? 0})`
@@ -268,8 +291,34 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
                     </Box>
                   </Box>
                 )}
-                renderInput={(params) => <TextField {...params} label="Pesquisar produto pelo nome..." variant="outlined" />}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Pesquisar produto por nome ou código de barras"
+                    variant="outlined"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleSearchAdd();
+                      }
+                    }}
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <>
+                          <InputAdornment position="start"><QrCodeScanner /></InputAdornment>
+                          {params.InputProps.startAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
                 value={selectedProduct}
+                inputValue={productSearch}
+                onInputChange={(_, value, reason) => {
+                  setProductSearch(value);
+                  if (reason === 'input') setSelectedProduct(null);
+                }}
                 onChange={(_, newValue) => setSelectedProduct(newValue)}
               />
               <Button variant="contained" disableElevation onClick={handleSearchAdd} sx={{ minWidth: '100px' }} fullWidth={isMobile}>
@@ -332,8 +381,8 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
                   <Box display="flex" flexDirection="column" gap={1.5} mb={1}>
                     {itensOrdenados.map((ativo) => {
                       const valorTotalDesteItem = Number(ativo.valor_unit) * Number(ativo.qtde);
-                      const bloqueiaDiminuir = Number(ativo.qtde) <= 1 || (total - Number(ativo.valor_unit)) < totalPaid;
-                      const bloqueiaRemover = (total - valorTotalDesteItem) < totalPaid;
+                      const bloqueiaDiminuir = Number(ativo.qtde) <= 1 || bloqueiaRemocaoPorPagamento(Number(ativo.valor_unit));
+                      const bloqueiaRemover = bloqueiaRemocaoPorPagamento(valorTotalDesteItem);
 
                       return (
                         <Card variant="outlined" key={`${ativo.codp}-${ativo.lote}`}>
@@ -404,8 +453,8 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
                       <TableBody>
                         {itensOrdenados.map((ativo) => {
                           const valorTotalDesteItem = Number(ativo.valor_unit) * Number(ativo.qtde);
-                          const bloqueiaDiminuir = Number(ativo.qtde) <= 1 || (total - Number(ativo.valor_unit)) < totalPaid;
-                          const bloqueiaRemover = (total - valorTotalDesteItem) < totalPaid;
+                          const bloqueiaDiminuir = Number(ativo.qtde) <= 1 || bloqueiaRemocaoPorPagamento(Number(ativo.valor_unit));
+                          const bloqueiaRemover = bloqueiaRemocaoPorPagamento(valorTotalDesteItem);
 
                           return (
                             <TableRow key={`${ativo.codp}-${ativo.lote}`}>
@@ -491,12 +540,13 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
         </DialogContent>
 
         <DialogActions sx={{ p: 2, borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper', justifyContent: 'space-between' }}>
-          <Tooltip
-            title="Ajuste a quantidade e pesquise por um produto ou clique rapidamente em uma das sugestões para adicionar."
-            arrow
-            placement="top-start"
-          >
-            <IconButton size="small" aria-label="Ajuda sobre o funcionamento da comanda" sx={{ color: 'text.secondary' }}>
+          <Tooltip title="Ajuste a quantidade e pesquise por um produto ou clique rapidamente em uma das sugestões para adicionar." arrow placement="top-start">
+            <IconButton
+              size="small"
+              aria-label="Ajuda sobre o funcionamento da comanda"
+              onClick={() => setHelpOpen(true)}
+              sx={{ color: 'text.secondary' }}
+            >
               <HelpOutline fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -522,6 +572,56 @@ export default function OrderDetailDialog({ orderId, onClose }: OrderDetailDialo
           onOrderClosed={onClose} 
         />
       )}
+
+      <Dialog open={helpOpen} onClose={() => setHelpOpen(false)}>
+        <DialogTitle>Como usar a comanda</DialogTitle>
+        <DialogContent>
+          <DialogContentText style={{ whiteSpace: 'pre-line' }}>
+            Para lançar um produto na comanda, pesquise pelo nome, informe a quantidade e depois clique em inserir.
+            <br />
+            É possível adicionar itens por leitor de código de barras, caso ele não exista, o sistema abre a tela de cadastro com o código já inserido.
+            <br />
+            Se preferir, selecione algum produto da seleção. 
+            <br />
+            A seleção rápida mostra os seis produtos mais vendidos. 
+            <br />
+            Depois de adicionado, aumente ou diminua as quantidades com os botões de "+" e "-". 
+            <br />
+            Para remover um item clique na lixeira ao lado do produto inserido. 
+            <br />
+            O resumo mostra o valor total da comanda, o valor ainda a ser pago e o restante. 
+            <br />
+            A comanda permanecerá aberta caso seja clicado no ícone de X. 
+            <br />
+            Para fechar a comanda por completo é necessário pagar.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHelpOpen(false)}>Entendi</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(barcodeToRegister)} onClose={() => setBarcodeToRegister('')}>
+        <DialogTitle>Produto não encontrado</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Não existe produto cadastrado com o código de barras {barcodeToRegister}. Deseja cadastrar?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBarcodeToRegister('')}>Não</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const codigo = barcodeToRegister;
+              setBarcodeToRegister('');
+              onRegisterProduct(codigo);
+            }}
+          >
+            Sim, cadastrar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog 
         open={!!ativoToDelete} 

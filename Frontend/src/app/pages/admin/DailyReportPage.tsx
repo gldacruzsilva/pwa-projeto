@@ -171,6 +171,21 @@ export default function DailyReportPage() {
     return () => { active = false; };
   }, [selectedDate]);
 
+  const orderTotals = report
+    ? report.comandas.reduce(
+        (totals, order) => {
+          const items = report.itens.filter((item) => item.codc === order.codc);
+          items.forEach((item) => {
+            totals.quantity += Number(item.qtde || 0);
+            totals.subtotal += Number(item.qtde || 0) * Number(item.preco_vendido || 0);
+          });
+          if (!items.length) totals.subtotal += Number(order.valor_total || 0);
+          return totals;
+        },
+        { quantity: 0, subtotal: 0 },
+      )
+    : { quantity: 0, subtotal: 0 };
+
   const generatePdf = async () => {
     if (!report) return;
 
@@ -201,17 +216,17 @@ export default function DailyReportPage() {
         subject: 'Movimentação de comandas, pagamentos e estoque',
         creator: 'Sistema de Gerenciamento',
       });
-      doc.addImage(logoData, 'PNG', 14, 11, 18, 18);
-      doc.setTextColor(25, 55, 90);
+      doc.addImage(logoData, 'PNG', 14, 9, 24, 24);
+      doc.setTextColor(25, 25, 25);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(17);
-      doc.text('Relatório diário de movimentação', 38, 17);
+      doc.text('Relatório diário de movimentação', 42, 17);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.setTextColor(70, 80, 90);
-      doc.text(`Data de referência: ${formatDate(report.data)}`, 38, 23);
-      doc.text(`Emitido em: ${reportDateTime()}`, 38, 28);
-      doc.setDrawColor(210, 218, 228);
+      doc.setTextColor(70, 70, 70);
+      doc.text(`Data do filtro: ${formatDate(report.data)}`, 42, 23);
+      doc.text(`Emitido em: ${reportDateTime()}`, 42, 28);
+      doc.setDrawColor(180, 180, 180);
       doc.line(14, 34, 283, 34);
 
       const totalComandas = report.comandas.reduce((sum, order) => sum + Number(order.valor_total || 0), 0);
@@ -225,15 +240,15 @@ export default function DailyReportPage() {
       const summaryWidth = 269 / summaries.length;
       summaries.forEach(([label, value], index) => {
         const x = 14 + index * summaryWidth;
-        doc.setFillColor(245, 248, 252);
+        doc.setFillColor(245, 245, 245);
         doc.roundedRect(x, 39, summaryWidth - 3, 17, 2, 2, 'F');
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        doc.setTextColor(85, 95, 105);
+        doc.setTextColor(75, 75, 75);
         doc.text(label, x + 3, 45);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
-        doc.setTextColor(25, 55, 90);
+        doc.setTextColor(25, 25, 25);
         doc.text(value, x + 3, 52);
       });
 
@@ -242,6 +257,7 @@ export default function DailyReportPage() {
         headers: string[],
         rows: (string | number)[][],
         columnStyles?: Record<number, { cellWidth: number }>,
+        footerRows?: (string | number)[][],
       ) => {
         const lastAutoTable = (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable;
         let startY = lastAutoTable ? lastAutoTable.finalY + 12 : 65;
@@ -252,24 +268,26 @@ export default function DailyReportPage() {
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
-        doc.setTextColor(25, 55, 90);
+        doc.setTextColor(25, 25, 25);
         doc.text(title, 14, startY);
         autoTable(doc, {
           startY: startY + 3,
           head: [headers],
           body: rows.length ? rows : [[`Nenhum registro neste dia.`, ...headers.slice(1).map(() => '')]],
-          styles: { font: 'helvetica', fontSize: 8, cellPadding: 2.2, overflow: 'linebreak' },
-          headStyles: { fillColor: [35, 91, 145], textColor: 255, fontStyle: 'bold' },
-          alternateRowStyles: { fillColor: [246, 248, 251] },
+          foot: footerRows,
+          styles: { font: 'helvetica', fontSize: 8, cellPadding: 2.2, overflow: 'linebreak', textColor: [35, 35, 35], lineColor: [200, 200, 200], lineWidth: 0.1 },
+          headStyles: { fillColor: [225, 225, 225], textColor: [25, 25, 25], fontStyle: 'bold' },
+          footStyles: { fillColor: [235, 235, 235], textColor: [20, 20, 20], fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [248, 248, 248] },
           columnStyles,
           margin: { top: 22, bottom: 18, left: 14, right: 14 },
           didDrawPage: ({ pageNumber }) => {
             if (pageNumber > 1) {
               doc.setFont('helvetica', 'normal');
               doc.setFontSize(8);
-              doc.setTextColor(110, 120, 130);
+              doc.setTextColor(90, 90, 90);
               doc.text(`Relatório diário de movimentação - ${formatDate(report.data)}`, 14, 12);
-              doc.setDrawColor(220, 225, 232);
+              doc.setDrawColor(190, 190, 190);
               doc.line(14, 15, 283, 15);
             }
           },
@@ -296,11 +314,12 @@ export default function DailyReportPage() {
           status,
         ]);
       });
-
       addTableSection(
         'Comandas e itens registrados no dia',
         ['Comanda', 'Cliente', 'Abertura', 'Produto / lote', 'Qtde.', 'Unitário', 'Subtotal', 'Situação'],
         orderRows,
+        undefined,
+        [['TOTAL GERAL', '', '', '', String(orderTotals.quantity), '', formatCurrency(orderTotals.subtotal), '']],
       );
       addTableSection(
         'Pagamentos recebidos no dia',
@@ -332,7 +351,7 @@ export default function DailyReportPage() {
         doc.setPage(page);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        doc.setTextColor(110, 120, 130);
+        doc.setTextColor(90, 90, 90);
         doc.text('Documento gerado pelo Sistema de Gerenciamento', 14, 202);
         doc.text(`Página ${page} de ${pageCount}`, 283, 202, { align: 'right' });
       }
@@ -440,6 +459,12 @@ export default function DailyReportPage() {
                     ));
                   })}
                   {!report.comandas.length && <TableRow><TableCell colSpan={7} align="center">Nenhuma comanda registrada.</TableCell></TableRow>}
+                  <TableRow sx={{ '& td': { fontWeight: 700, bgcolor: 'action.hover' } }}>
+                    <TableCell colSpan={4}>Total geral</TableCell>
+                    <TableCell align="right">{orderTotals.quantity}</TableCell>
+                    <TableCell align="right">{formatCurrency(orderTotals.subtotal)}</TableCell>
+                    <TableCell />
+                  </TableRow>
                 </TableBody>
               </Table>
             </TableContainer>

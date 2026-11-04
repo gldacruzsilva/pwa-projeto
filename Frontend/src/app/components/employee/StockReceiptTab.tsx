@@ -8,6 +8,7 @@ import {
 import { Add, Delete, AddCircleOutline, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
 import ProductImagePicker from '../ProductImagePicker';
+import { useLocation, useNavigate } from 'react-router';
 
 export default function StockReceiptTab() {
   const [description, setDescription] = useState('');
@@ -20,6 +21,8 @@ export default function StockReceiptTab() {
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const usuarioString = localStorage.getItem('usuarioAtivo');
   const usuarioAtual = usuarioString 
@@ -38,6 +41,14 @@ export default function StockReceiptTab() {
 
   useEffect(() => { buscarProdutos(); }, []);
 
+  useEffect(() => {
+    const initialBarcode = (location.state as { initialBarcode?: string } | null)?.initialBarcode;
+    if (!initialBarcode) return;
+    setNovoProduto((produto) => ({ ...produto, codp: initialBarcode }));
+    setModalOpen(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+
   // Bloqueadores de teclado
   const blockInvalidInteger = (e: React.KeyboardEvent) => {
     if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) e.preventDefault();
@@ -54,7 +65,7 @@ export default function StockReceiptTab() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          codp: parseInt(novoProduto.codp), nome: novoProduto.nome, preco_venda: parseFloat(novoProduto.preco || '0'),
+          codp: novoProduto.codp, nome: novoProduto.nome, preco_venda: parseFloat(novoProduto.preco || '0'),
           preco_custo: parseFloat(novoProduto.preco_custo || '0'), lote: '1', qtde_estoque: 0,
           imagem: novoProduto.imagem || null,
           descricao: 'ENTRADA: Cadastro de Novo Produto no Sistema', 
@@ -66,7 +77,10 @@ export default function StockReceiptTab() {
         setModalOpen(false);
         setNovoProduto({ codp: '', nome: '', preco: '', preco_custo: '', imagem: '' });
         buscarProdutos();
-      } else { toast.error('Falha ao cadastrar produto. Verifique o código de barras.'); }
+      } else {
+        const errorData = await resposta.json().catch(() => ({}));
+        toast.error(errorData.detalhe || errorData.mensagem || 'Falha ao cadastrar produto. Verifique o código de barras.');
+      }
     } catch (erro) { toast.error('Erro de conexão.'); }
   };
 
@@ -117,6 +131,9 @@ export default function StockReceiptTab() {
     if (receiptItems.some(item => item.quantity <= 0)) {
       return toast.error('Verifique as quantidades. Valores zerados não são permitidos.');
     }
+    if (receiptItems.some(item => !Number.isFinite(Number(item.costPrice)) || Number(item.costPrice) < 0)) {
+      return toast.error('Verifique os preços de custo. Eles não podem ser inválidos ou negativos.');
+    }
 
     try {
       const promessas = receiptItems.map(async (item) => {
@@ -133,7 +150,7 @@ export default function StockReceiptTab() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             nome: item.productName, preco_venda: item.preco_venda, qtde_estoque: novoEstoque,
-            preco_custo: item.originalCostPrice, lote: item.originalBatch, lote_original: item.originalBatch,
+            preco_custo: Number(item.costPrice), lote: item.originalBatch, lote_original: item.originalBatch,
             descricao: textoDescricao, 
             codu: usuarioAtual.codu 
           })
@@ -287,7 +304,16 @@ export default function StockReceiptTab() {
                       </TableCell>
                       
                       <TableCell><TextField value={item.batch} size="small" disabled={true} /></TableCell>
-                      <TableCell><TextField type="number" value={item.costPrice} size="small" disabled={true} /></TableCell>
+                      <TableCell>
+                        <TextField
+                          type="number"
+                          value={item.costPrice}
+                          size="small"
+                          disabled={item.tipoMovimento === 'saida'}
+                          inputProps={{ min: 0, step: 0.01 }}
+                          onChange={(e) => setReceiptItems(receiptItems.map(i => i === item ? { ...i, costPrice: Number(e.target.value) } : i))}
+                        />
+                      </TableCell>
                       <TableCell><TextField type="number" value={item.preco_venda} size="small" disabled={true} /></TableCell>
                       
                       <TableCell align="center">
@@ -328,10 +354,10 @@ export default function StockReceiptTab() {
         <DialogContent dividers>
           <Box display="flex" flexDirection="column" gap={3} mt={1}>
             <TextField 
-              label="Código (Barras)" fullWidth type="number" value={novoProduto.codp} 
-              onChange={(e) => setNovoProduto({ ...novoProduto, codp: e.target.value })} 
+              label="Código (Barras)" fullWidth type="text" value={novoProduto.codp}
+              onChange={(e) => setNovoProduto({ ...novoProduto, codp: e.target.value.replace(/\D/g, '') })}
               onKeyDown={blockInvalidInteger}
-              inputProps={{ min: 0, step: 1 }}
+              inputProps={{ inputMode: 'numeric' }}
             />
             <TextField label="Nome" fullWidth value={novoProduto.nome} onChange={(e) => setNovoProduto({ ...novoProduto, nome: e.target.value })} />
             <Box display="flex" gap={2}>

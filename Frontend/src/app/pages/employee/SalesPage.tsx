@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Box, Tabs, Tab, Badge } from '@mui/material';
-import { Receipt, Add, Inventory } from '@mui/icons-material';
+import { Receipt, Add } from '@mui/icons-material';
+import { useNavigate } from 'react-router';
 import { useOrders } from '../../contexts/OrderContext';
 import OrdersListTab from '../../components/employee/OrdersListTab';
 import NewOrderTab from '../../components/employee/NewOrderTab';
-import StockReceiptTab from '../../components/employee/StockReceiptTab';
 
 export default function SalesPage() {
   const [activeTab, setActiveTab] = useState(0);
+  const [orderToOpen, setOrderToOpen] = useState<number | null>(null);
   const { orders } = useOrders();
+  const navigate = useNavigate();
+  const handleOrderOpened = useCallback(() => setOrderToOpen(null), []);
 
   return (
     <Box className="h-full flex flex-col">
@@ -24,14 +27,23 @@ export default function SalesPage() {
             label="Nova Comanda"
             iconPosition="start"
           />
-          
         </Tabs>
       </Box>
 
       <Box className="flex-1 overflow-auto">
-        {activeTab === 0 && <OrdersListTab />}
-        {activeTab === 1 && <NewOrderTab onOrderCreated={() => setActiveTab(0)} />}
-        {activeTab === 2 && <StockReceiptTab />}
+        {activeTab === 0 && (
+          <OrdersListTab
+            initialOrderId={orderToOpen}
+            onOrderOpened={handleOrderOpened}
+            onRegisterProduct={(barcode) => navigate('/funcionario/estoque', { state: { initialBarcode: barcode } })}
+          />
+        )}
+        {activeTab === 1 && (
+          <NewOrderTab onOrderCreated={(orderId) => {
+            setOrderToOpen(orderId);
+            setActiveTab(0);
+          }} />
+        )}
       </Box>
     </Box>
   );
