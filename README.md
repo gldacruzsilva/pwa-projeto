@@ -215,3 +215,5 @@ pwa-projeto/
  Nosso projeto consta com o 'admin' e 'funcionario' sendo pré definidos, então após conseguir abrir a aplicação e cair na tela de login, é preciso criar 2 usuarios, o admin e o funcionario, as credencias pré definidas são listadas abaixo. É necessário que seja nessa ordem:
  Para admin: codu= 1 ; usuario= admin ; senha= 001admin ; tipo= admin ; 
  Para funcionario: codu = 2 ; usuario= funcionario ; senha= func123 ; tipo = funcionario ;
+
+As senhas de usuários existentes em texto puro são convertidas para hash scrypt automaticamente após o primeiro login bem-sucedido. O login retorna apenas os dados públicos do usuário; a senha e seu hash não são enviados ao frontend.

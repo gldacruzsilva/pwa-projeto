@@ -2,6 +2,7 @@ import express from 'express';
 import db from './banco.js'; 
 import cors from 'cors';
 import { validarCodigoBarras } from './codigoBarras.js';
+import { hashSenha, senhaEstaHasheada, verificarSenha } from './senhas.js';
 
 const app = express();
 app.use(cors());
@@ -162,10 +163,35 @@ app.get('/relatorios/movimentacao-diaria', async (req, res) => {
 
 app.post('/login', async (req, res) => {
     try {
-        const { nome, senha } = req.body;
-        const [linhas] = await db.execute('SELECT codu, nome, tipo FROM Usuario WHERE nome = ? AND senha = ?', [nome, senha]);
-        if (linhas.length === 0) return res.status(401).json({ mensagem: 'Usuário ou senha incorretos' });
-        res.status(200).json(linhas[0]);
+        const { nome, senha } = req.body ?? {};
+        if (typeof nome !== 'string' || typeof senha !== 'string' || !nome || !senha) {
+            return res.status(400).json({ mensagem: 'Informe usuário e senha.' });
+        }
+
+        const [usuarios] = await db.execute('SELECT codu, nome, tipo, senha FROM Usuario WHERE nome = ?', [nome]);
+        let usuarioAutenticado = null;
+        for (const usuario of usuarios) {
+            if (await verificarSenha(senha, usuario.senha)) {
+                usuarioAutenticado = usuario;
+                break;
+            }
+        }
+
+        if (!usuarioAutenticado) return res.status(401).json({ mensagem: 'Usuário ou senha incorretos' });
+
+        if (!senhaEstaHasheada(usuarioAutenticado.senha)) {
+            const senhaHash = await hashSenha(senha);
+            await db.execute(
+                'UPDATE Usuario SET senha = ? WHERE codu = ? AND senha = ?',
+                [senhaHash, usuarioAutenticado.codu, usuarioAutenticado.senha]
+            );
+        }
+
+        res.status(200).json({
+            codu: usuarioAutenticado.codu,
+            nome: usuarioAutenticado.nome,
+            tipo: usuarioAutenticado.tipo
+        });
     } catch (erro) { 
         console.error('Erro no login:', erro);
         res.status(500).json({ mensagem: 'Erro interno' }); 
