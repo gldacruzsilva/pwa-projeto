@@ -11,7 +11,8 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { toast } from 'sonner';
-import { API_URL } from '../../services/api';
+import { apiUrl } from '../../services/api';
+
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const resposta = await fetch(`/api/login`, {
+      const resposta = await fetch(apiUrl('/api/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

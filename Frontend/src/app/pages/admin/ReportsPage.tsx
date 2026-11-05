@@ -12,6 +12,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import ProductPaymentDetailsDialog from '../../components/admin/ProductPaymentDetailsDialog';
 import { toast } from 'sonner';
+import { apiUrl } from '../../../services/api';
 
 const formatarDataBR = (dataISO: string) => {
   if (!dataISO) return '';
@@ -75,7 +76,7 @@ export default function ReportsPage() {
 
   const handleViewDetails = async (item: any) => {
     try {
-      const response = await fetch(`/api/relatorios/produtos/${encodeURIComponent(item.product)}/pagamentos?inicio=${startDate}&fim=${endDate}`);
+      const response = await fetch(apiUrl(`/api/relatorios/produtos/${encodeURIComponent(item.product)}/pagamentos?inicio=${startDate}&fim=${endDate}`));
       
       if (response.ok) {
         const dados = await response.json();
@@ -100,7 +101,7 @@ export default function ReportsPage() {
 
   const carregarRelatorios = async () => {
     try {
-      const response = await fetch(`/api/relatorios/vendas`);
+      const response = await fetch(apiUrl('/api/relatorios/vendas'));
       if (!response.ok) throw new Error('Erro ao buscar comandas');
       const comandas = await response.json();
       
@@ -146,7 +147,7 @@ export default function ReportsPage() {
       setMonthlyData(Object.values(monthlyMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)));
 
       try {
-        const prodRes = await fetch(`/api/relatorios/produtos?inicio=${startDate}&fim=${endDate}`);
+        const prodRes = await fetch(apiUrl(`/api/relatorios/produtos?inicio=${startDate}&fim=${endDate}`));
         if (prodRes.ok) {
           const prodData = await prodRes.json();
           const formatados = prodData.map((p: any) => ({
@@ -160,7 +161,7 @@ export default function ReportsPage() {
 
       // 🟢 BUSCA O RESUMO DE PAGAMENTOS GERAIS PARA OS CARDS
       try {
-        const pagRes = await fetch(`/api/relatorios/pagamentos?inicio=${startDate}&fim=${endDate}`);
+        const pagRes = await fetch(apiUrl(`/api/relatorios/pagamentos?inicio=${startDate}&fim=${endDate}`));
         if (pagRes.ok) {
           const pagData = await pagRes.json();
           const stats: Record<string, number> = {

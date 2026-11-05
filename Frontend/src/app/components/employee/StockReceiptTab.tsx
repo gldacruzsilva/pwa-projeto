@@ -9,6 +9,7 @@ import { Add, Delete, AddCircleOutline, HelpOutline } from '@mui/icons-material'
 import { toast } from 'sonner';
 import ProductImagePicker from '../ProductImagePicker';
 import { useLocation, useNavigate } from 'react-router';
+import { apiUrl } from '../../../services/api';
 
 export default function StockReceiptTab() {
   const [description, setDescription] = useState('');
@@ -31,7 +32,7 @@ export default function StockReceiptTab() {
 
   const buscarProdutos = async () => {
     try {
-      const resposta = await fetch('/api/produtos');
+      const resposta = await fetch(apiUrl('/api/produtos'));
       if (resposta.ok) {
         const dados = await resposta.json();
         setProductList(Array.isArray(dados) ? dados : dados.produtos || []);
@@ -61,7 +62,7 @@ export default function StockReceiptTab() {
   const handleCadastrarNovoProduto = async () => {
     if (!novoProduto.codp.trim() || !novoProduto.nome.trim()) return toast.error('Preencha os campos!');
     try {
-      const resposta = await fetch('/api/produtos', {
+      const resposta = await fetch(apiUrl('/api/produtos'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -145,7 +146,7 @@ export default function StockReceiptTab() {
           throw new Error(`Estoque insuficiente para a saída do produto: ${item.productName}`);
         }
 
-        return fetch(`/api/produtos/${item.productCode}`, {
+        return fetch(apiUrl(`/api/produtos/${item.productCode}`), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { CreditCard, Close, AttachMoney, QrCode2, Delete, CheckCircle, Add, HelpOutline, Settings } from '@mui/icons-material';
 import { toast } from 'sonner';
+import { apiUrl } from '../../../services/api';
 
 interface PaymentDialogProps {
   orderId: number;
@@ -40,10 +41,11 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
   const [isDeactivatingPaymentType, setIsDeactivatingPaymentType] = useState(false);
   const [amount, setAmount] = useState('');
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
+ 
 
   useEffect(() => {
     setIsLoading(true);
-    fetch(`/api/comandas/${orderId}`)
+    fetch(apiUrl(`/api/comandas/${orderId}`))
       .then(async (res) => {
         if (!res.ok) throw new Error('Erro na API');
         return res.json();
@@ -60,7 +62,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
 
   useEffect(() => {
     let active = true;
-    fetch('/api/tipos-pagamento')
+    fetch(apiUrl('/api/tipos-pagamento'))
       .then(async (response) => {
         const contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
@@ -139,7 +141,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
 
     setIsDeactivatingPaymentType(true);
     try {
-      const response = await fetch(`/api/tipos-pagamento/${paymentTypeToDeactivate.codtp}`, {
+      const response = await fetch(apiUrl(`/api/tipos-pagamento/${paymentTypeToDeactivate.codtp}`), {
         method: 'DELETE',
       });
       const contentType = response.headers.get('content-type') || '';
@@ -170,7 +172,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
 
     setIsSavingPaymentType(true);
     try {
-      const response = await fetch('/api/tipos-pagamento', {
+      const response = await fetch(apiUrl('/api/tipos-pagamento'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ descricao: description }),
@@ -212,7 +214,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
     if (payments.length === 0) return toast.error('Adicione pelo menos um pagamento na lista');
 
     try {
-      const response = await fetch(`/api/comandas/${orderId}/pagamentos`, {
+      const response = await fetch(apiUrl(`/api/comandas/${orderId}/pagamentos`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pagamentos: payments })
@@ -224,7 +226,7 @@ export default function PaymentDialog({ orderId, onClose, onOrderClosed }: Payme
       if (!response.ok) throw new Error(result.mensagem || 'Não foi possível registrar os pagamentos.');
 
       if (remaining <= 0) {
-        const closeResponse = await fetch(`/api/comandas/${orderId}/fechar`, { method: 'PUT' });
+        const closeResponse = await fetch(apiUrl(`/api/comandas/${orderId}/fechar`), { method: 'PUT' });
         if (!closeResponse.ok) throw new Error('Pagamento registrado, mas não foi possível fechar a comanda.');
         toast.success('Pagamento e fechamento realizados com sucesso');
         

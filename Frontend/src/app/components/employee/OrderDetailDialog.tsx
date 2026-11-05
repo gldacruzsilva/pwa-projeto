@@ -9,6 +9,7 @@ import {
 import { Close, Add, Remove, Delete, Payment, Inventory2, HelpOutline, QrCodeScanner } from '@mui/icons-material';
 import { toast } from 'sonner';
 import PaymentDialog from './PaymentDialog';
+import { apiUrl } from '../../../services/api';
 
 interface OrderDetailDialogProps {
   orderId: number;
@@ -67,9 +68,9 @@ export default function OrderDetailDialog({ orderId, onClose, onRegisterProduct 
   const fetchData = async () => {
     try {
       const [resOrder, resProducts, resBestSellingProducts] = await Promise.all([
-        fetch(`/api/comandas/${orderId}`),
-        fetch(`/api/produtos`),
-        fetch(`/api/produtos/mais-vendidos`)
+        fetch(apiUrl(`/api/comandas/${orderId}`)),
+        fetch(apiUrl('/api/produtos')),
+        fetch(apiUrl('/api/produtos/mais-vendidos'))
       ]);
 
       if (resOrder.ok) setOrder(await resOrder.json());
@@ -119,7 +120,7 @@ export default function OrderDetailDialog({ orderId, onClose, onRegisterProduct 
   
   const handleAddItem = async (codp: number | string, qtde: number, nome: string, lote: string) => {
     try {
-      const response = await fetch(`/api/comandas/${orderId}/itens`, {
+      const response = await fetch(apiUrl(`/api/comandas/${orderId}/itens`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ codp, qtde, lote })
@@ -142,7 +143,7 @@ export default function OrderDetailDialog({ orderId, onClose, onRegisterProduct 
     if (newQty <= 0) return;
 
     try {
-      const response = await fetch(`/api/comandas/${orderId}/itens/${codp}`, {
+      const response = await fetch(apiUrl(`/api/comandas/${orderId}/itens/${codp}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qtde: newQty, lote }) 
@@ -163,7 +164,7 @@ export default function OrderDetailDialog({ orderId, onClose, onRegisterProduct 
     if (!ativoToDelete) return;
 
     try {
-      const response = await fetch(`/api/comandas/${orderId}/itens/${ativoToDelete.codp}?lote=${ativoToDelete.lote}`, { method: 'DELETE' });
+      const response = await fetch(apiUrl(`/api/comandas/${orderId}/itens/${ativoToDelete.codp}?lote=${ativoToDelete.lote}`), { method: 'DELETE' });
       
       if (response.ok) {
         toast.success('Produto removido e devolvido ao estoque.');

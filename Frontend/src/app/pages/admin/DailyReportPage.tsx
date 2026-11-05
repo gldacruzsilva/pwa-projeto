@@ -19,6 +19,7 @@ import {
   Typography,
 } from '@mui/material';
 import { Download, HelpOutline } from '@mui/icons-material';
+import { apiUrl } from '../../../services/api';
 
 interface DailyReport {
   data: string;
@@ -148,7 +149,7 @@ export default function DailyReportPage() {
       setReport(null);
 
       try {
-        const response = await fetch(`/api/relatorios/movimentacao-diaria?data=${encodeURIComponent(selectedDate)}`);
+        const response = await fetch(apiUrl(`/api/relatorios/movimentacao-diaria?data=${encodeURIComponent(selectedDate)}`));
         const contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
           throw new Error(

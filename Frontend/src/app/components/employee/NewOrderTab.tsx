@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { HelpOutline, PersonAddAlt1 } from '@mui/icons-material';
 import { toast } from 'sonner';
+import { apiUrl } from '../../../services/api';
 
 interface NewOrderTabProps {
   onOrderCreated: (orderId: number) => void;
@@ -32,7 +33,7 @@ export default function NewOrderTab({ onOrderCreated }: NewOrderTabProps) {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/comandas', {
+      const response = await fetch(apiUrl('/api/comandas'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nick: customerName.trim() }),

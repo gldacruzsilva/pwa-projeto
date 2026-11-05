@@ -8,6 +8,8 @@ import {
 import { Edit, Delete, RestoreFromTrash, Info, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
 import ProductImagePicker from '../../components/ProductImagePicker';
+import { apiUrl } from '../../../services/api';
+
 
 interface Product {
   id: number;
@@ -27,7 +29,7 @@ const formatarMoedaBrasileira = (valor: number): string => {
   }).format(valor);
 };
 
-const API_URL = '/api';
+const API_URL = apiUrl('/api');
 
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);

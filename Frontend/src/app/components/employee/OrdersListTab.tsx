@@ -19,6 +19,7 @@ import {
 import { Search, Delete, ReceiptLong } from '@mui/icons-material';
 import OrderDetailDialog from './OrderDetailDialog';
 import { toast } from 'sonner';
+import { apiUrl } from '../../../services/api';
 
 interface OrdersListTabProps {
   initialOrderId: number | null;
@@ -48,7 +49,7 @@ export default function OrdersListTab({ initialOrderId, onOrderOpened, onRegiste
 
  const fetchOrders = async () => {
     try {
-      const response = await fetch('/api/comandas');
+    const response = await fetch(apiUrl('/api/comandas'));
       if (response.ok) {
         const data = await response.json();
         // Garante que setOrders receba uma Array, mesmo que a API retorne um objeto
@@ -75,7 +76,7 @@ export default function OrdersListTab({ initialOrderId, onOrderOpened, onRegiste
     if (!orderToDelete) return;
 
     try {
-      const response = await fetch(`/api/comandas/${orderToDelete.id}`, {
+      const response = await fetch(apiUrl(`/api/comandas/${orderToDelete.id}`), {
         method: 'DELETE',
       });
 

@@ -29,6 +29,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete, SwapHoriz, AddCircleOutline, RestoreFromTrash, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
+import { apiUrl } from '../../../services/api';
 
 interface Asset {
   id: number;
@@ -80,7 +81,7 @@ export default function AssetsPage() {
 
   const fetchAssets = async () => {
     try {
-      const response = await fetch('/api/bens?status=1');
+      const response = await fetch(apiUrl('/api/bens?status=1'));
       if (response.ok) {
         const dados = await response.json();
         const ativosFormatados = dados.map((item: any) => ({
@@ -99,7 +100,7 @@ export default function AssetsPage() {
 
   const fetchTrashAssets = async () => {
     try {
-      const response = await fetch('/api/bens?status=0');
+      const response = await fetch(apiUrl('/api/bens?status=0'));
       if (response.ok) {
         const dados = await response.json();
         const ativosInativos = dados.map((item: any) => ({
@@ -153,7 +154,7 @@ export default function AssetsPage() {
     }
 
     try {
-      const response = await fetch(`/api/bens/${selectedAsset.id}`, {
+      const response = await fetch(apiUrl(`/api/bens/${selectedAsset.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -187,7 +188,7 @@ export default function AssetsPage() {
     }
 
     try {
-      const response = await fetch('/api/bens', {
+      const response = await fetch(apiUrl('/api/bens'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -217,7 +218,7 @@ export default function AssetsPage() {
     if (!isAdmin) return toast.error('Acesso negado.');
     if (!editingAsset) return;
     try {
-      const response = await fetch(`/api/bens/${editingAsset.id}`, {
+      const response = await fetch(apiUrl(`/api/bens/${editingAsset.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,7 +248,7 @@ export default function AssetsPage() {
     if (!isAdmin) return toast.error('Acesso negado.');
     if (!deletingAsset) return;
     try {
-      const response = await fetch(`/api/bens/${deletingAsset.id}`, { method: 'DELETE' });
+      const response = await fetch(apiUrl(`/api/bens/${deletingAsset.id}`), { method: 'DELETE' });
 
       if (response.ok) {
         toast.success('Ativo movido para a lixeira!');
@@ -261,7 +262,7 @@ export default function AssetsPage() {
 
   const handleRestore = async (asset: Asset) => {
     try {
-      const response = await fetch(`/api/bens/${asset.id}/reativar`, { method: 'PUT' });
+      const response = await fetch(apiUrl(`/api/bens/${asset.id}/reativar`), { method: 'PUT' });
       if (response.ok) {
         toast.success('Ativo restaurado com sucesso!');
         fetchTrashAssets();

@@ -9,6 +9,7 @@ import {
 import { Add, Delete, AddCircleOutline, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
 import ProductImagePicker from '../../components/ProductImagePicker';
+import { apiUrl } from '../../../services/api';
 
 export default function StockReceiptPage() {
   const [description, setDescription] = useState('');
@@ -29,7 +30,7 @@ export default function StockReceiptPage() {
 
   const buscarProdutos = async () => {
     try {
-      const resposta = await fetch('/api/produtos');
+      const resposta = await fetch(apiUrl('/api/produtos'));
       if (resposta.ok) {
         const dados = await resposta.json();
         setProductList(Array.isArray(dados) ? dados : dados.produtos || []);
@@ -57,7 +58,7 @@ export default function StockReceiptPage() {
     const precoCustoFMT = Number(String(novoProduto.preco_custo).replace(',', '.') || 0);
 
     try {
-      const resposta = await fetch('/api/produtos', {
+      const resposta = await fetch(apiUrl('/api/produtos'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,7 +179,7 @@ export default function StockReceiptPage() {
         const precoVendaBD = Number(String(item.preco_venda).replace(',', '.'));
         const precoCustoBD = Number(String(item.costPrice).replace(',', '.'));
 
-        return fetch(`/api/produtos/${item.productCode}`, {
+       return fetch(apiUrl(`/api/produtos/${item.productCode}`), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

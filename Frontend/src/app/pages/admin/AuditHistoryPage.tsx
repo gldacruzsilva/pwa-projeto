@@ -27,6 +27,7 @@ import {
 } from '@mui/material';
 import { ExpandMore, HelpOutline } from '@mui/icons-material';
 import { toast } from 'sonner';
+import { apiUrl } from '../../../services/api';
 
 interface RegistroAuditoria {
   codse: number;
@@ -57,8 +58,8 @@ export default function AuditHistoryPage() {
     setIsLoading(true);
     try {
       const [resEstoque, resAtivos] = await Promise.all([
-        fetch('/api/auditoria/estoque').catch(() => null),
-        fetch('/api/auditoria/ativos').catch(() => null)
+        fetch(apiUrl('/api/auditoria/estoque')).catch(() => null),
+        fetch(apiUrl('/api/auditoria/ativos')).catch(() => null)
       ]);
 
       let dadosCompletos: RegistroAuditoria[] = [];
@@ -112,7 +113,7 @@ export default function AuditHistoryPage() {
   const handleDeleteRecord = async (codse: number, tipo_auditoria: string) => {
     if (!window.confirm('Tem certeza que deseja excluir este registro?')) return;
     try {
-      const resposta = await fetch(`/api/auditoria/estoque/${tipo_auditoria}/${codse}`, { method: 'DELETE' });
+      const resposta = await fetch(apiUrl(`/api/auditoria/estoque/${tipo_auditoria}/${codse}`), { method: 'DELETE' });
       if (resposta.ok) {
         toast.success('Registro excluído com sucesso!');
         buscarAuditoria(); 
@@ -123,7 +124,7 @@ export default function AuditHistoryPage() {
   const handleClearHistory = async () => {
     if (!window.confirm('ATENÇÃO: Isso apagará TODO o histórico de auditoria. Deseja continuar?')) return;
     try {
-      const resposta = await fetch('/api/auditoria/estoque', { method: 'DELETE' });
+      const resposta = await fetch(apiUrl('/api/auditoria/estoque'), { method: 'DELETE' });
       if (resposta.ok) {
         toast.success('Histórico limpo com sucesso!');
         setAuditRecords([]);
