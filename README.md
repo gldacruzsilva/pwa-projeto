@@ -1,5 +1,6 @@
 
   # Sistema de Gestão para Campo Society
+  Link do vídeo de tutorial de funcionamento: https://www.youtube.com/watch?v=Dj5BBoyXcVY
 
 Este projeto é composto por duas partes:
 
