@@ -400,11 +400,27 @@ app.put('/produtos/:id', async (req, res) => {
         const p = produtoAtual[0];
         
         const nomeFinal = nome !== undefined ? nome : p.nome;
+        if (!nomeFinal || String(nomeFinal).trim() === '') {
+            return res.status(400).json({ mensagem: 'Nome do produto é obrigatório.' });
+        }
+
         const qtdeFinal = qtde_estoque !== undefined ? qtde_estoque : p.qtde_estoque;
         const custoFinal = preco_custo !== undefined ? preco_custo : p.preco_custo;
         const loteFinal = lote !== undefined ? lote : p.lote;
         const precoFinal = preco !== undefined ? preco : (preco_venda !== undefined ? preco_venda : p.preco_venda);
         const imagemFinal = imagem !== undefined ? imagem : p.imagem;
+
+        const nomeNormalizado = String(nomeFinal).trim().toLocaleLowerCase('pt-BR');
+        const [produtosComMesmoNome] = await db.execute(
+            'SELECT codp, nome, lote FROM Produto WHERE nome IS NOT NULL AND LOWER(TRIM(nome)) = ? AND (codp <> ? OR lote <> ?)',
+            [nomeNormalizado, id, loteFinal ?? lote_original ?? '']
+        );
+
+        if (produtosComMesmoNome.length > 0) {
+            return res.status(400).json({
+                detalhe: `Já existe outro produto cadastrado com o nome "${produtosComMesmoNome[0].nome}".`
+            });
+        }
 
         let textoAuditoria = descricao;
         let registrarAuditoria = false;
