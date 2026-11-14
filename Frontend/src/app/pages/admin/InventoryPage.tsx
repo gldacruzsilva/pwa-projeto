@@ -126,7 +126,7 @@ export default function InventoryPage() {
           toast.success('Produto atualizado com sucesso');
           handleCloseDialog();
           fetchProducts(); 
-        } else { toast.error('Falha ao atualizar'); }
+        } else { toast.error('Falha ao atualizar. Verifique se o produto existe e se os dados estão corretos.'); }
       }
     } catch (erro) { toast.error('Erro ao salvar'); }
   };
