@@ -222,7 +222,7 @@ export default function StockReceiptTab() {
             fullWidth options={productList}
             getOptionLabel={(o) => `${o.nome} (Lote: ${o.lote || '1'} | Est: ${o.qtde_estoque})`}
             isOptionEqualToValue={(option, value) => option.codp === value.codp && option.lote === value.lote}
-            renderInput={(params) => <TextField {...params} label="Buscar Produto pelo Nome ou Lote" variant="outlined" />}
+            renderInput={(params) => <TextField {...params as any} label="Buscar Produto pelo Nome ou Lote" variant="outlined" />}
             value={productList.find(p => p.codp.toString() === selectedProduct?.split('|')[0] && p.lote === selectedProduct?.split('|')[1]) || null}
             onChange={(_, nv) => setSelectedProduct(nv ? `${nv.codp}|${nv.lote}` : null)}
           />

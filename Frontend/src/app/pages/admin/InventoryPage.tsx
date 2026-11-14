@@ -108,6 +108,16 @@ export default function InventoryPage() {
     if (!formData.name.trim() || !formData.price.trim()) return toast.error('Preencha os campos obrigatórios');
     try {
       if (editingProduct) {
+        const houveAlteracao = formData.name !== editingProduct.name
+          || parseFloat(formData.price) !== editingProduct.price
+          || (formData.image || null) !== (editingProduct.image || null);
+
+        if (!houveAlteracao) {
+          toast.info('Nenhuma alteração foi feita.');
+          handleCloseDialog();
+          return;
+        }
+
         const response = await fetch(`${API_URL}/produtos/${editingProduct.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
