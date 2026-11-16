@@ -14,7 +14,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button
+  Button,
+  CircularProgress
 } from '@mui/material';
 import { Search, Delete, ReceiptLong } from '@mui/icons-material';
 import OrderDetailDialog from './OrderDetailDialog';
@@ -43,20 +44,27 @@ export default function OrdersListTab({ initialOrderId, onOrderOpened, onRegiste
   const [orders, setOrders] = useState<ComandaBanco[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   
   // 🟢 Controle do Modal de Exclusão customizado
   const [orderToDelete, setOrderToDelete] = useState<{ id: number, name: string } | null>(null);
 
  const fetchOrders = async () => {
     try {
-    const response = await fetch(apiUrl('/api/comandas'));
+     const response = await fetch(apiUrl('/api/comandas'));
       if (response.ok) {
         const data = await response.json();
-        // Garante que setOrders receba uma Array, mesmo que a API retorne um objeto
         setOrders(Array.isArray(data) ? data : data.comandas || data.data || []);
+       setLoadError(false);
+     } else {
+       throw new Error(`Falha ao carregar comandas: ${response.status}`);
       }
     } catch (error) {
-      console.error('Erro ao carregar comandas do banco de dados.');
+     console.error('Erro ao carregar comandas do banco de dados.', error);
+     setLoadError(true);
+   } finally {
+     setIsLoading(false);
     }
   };
 
@@ -126,7 +134,15 @@ const filteredOrders = orders.filter(order => {
       />
 
       {/* LISTA DE COMANDAS */}
-      {filteredOrders.length === 0 ? (
+      {isLoading ? (
+        <Box display="flex" justifyContent="center" py={4}>
+          <CircularProgress size={28} aria-label="Carregando comandas" />
+        </Box>
+      ) : loadError && filteredOrders.length === 0 ? (
+        <Alert severity="error" sx={{ borderRadius: '8px' }}>
+          Não foi possível carregar as comandas. Tente novamente.
+        </Alert>
+      ) : filteredOrders.length === 0 ? (
         <Alert severity="info" sx={{ borderRadius: '8px' }}>
           {searchTerm ? 'Nenhuma comanda encontrada com esse nome.' : 'Não há comandas abertas no momento.'}
         </Alert>
