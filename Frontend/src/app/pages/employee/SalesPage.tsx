@@ -31,13 +31,13 @@ export default function SalesPage() {
       </Box>
 
       <Box className="flex-1 overflow-auto">
-        {activeTab === 0 && (
+        <Box hidden={activeTab !== 0}>
           <OrdersListTab
             initialOrderId={orderToOpen}
             onOrderOpened={handleOrderOpened}
             onRegisterProduct={(barcode) => navigate('/funcionario/estoque', { state: { initialBarcode: barcode } })}
           />
-        )}
+        </Box>
         {activeTab === 1 && (
           <NewOrderTab onOrderCreated={(orderId) => {
             setOrderToOpen(orderId);
